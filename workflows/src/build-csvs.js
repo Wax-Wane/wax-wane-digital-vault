@@ -69,6 +69,10 @@ function toCsv(rows, headers) {
   return lines.join('\r\n') + '\r\n';
 }
 
+function formatPrice(price) {
+  return Number.isFinite(price) ? price.toFixed(2) : '';
+}
+
 function toAmazonRow(p) {
   const c = p.copy || {};
   return {
@@ -81,7 +85,7 @@ function toAmazonRow(p) {
     manufacturer: p.manufacturer,
     part_number: p.partNumber,
     product_description: c.amazonDescription,
-    standard_price: p.price ? p.price.toFixed(2) : '',
+    standard_price: formatPrice(p.price),
     quantity: p.quantity || 0,
     main_image_url: p.mainImageUrl,
     bullet_point1: c.bullets[0] || '',
@@ -106,7 +110,7 @@ function toWalmartRow(p) {
     'Short Description': c.shortDescription,
     'Long Description': c.longDescription,
     'Main Image URL': p.mainImageUrl,
-    'Price': p.price ? p.price.toFixed(2) : '',
+    'Price': formatPrice(p.price),
     'Shipping Weight (lb)': p.weightLb || '',
     'Site Description': c.shortDescription,
     'Key Features 1': c.bullets[0] || '',

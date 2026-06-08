@@ -46,7 +46,7 @@ const workflow = {
       parameters: {
         httpMethod: 'POST',
         path: 'wax-wane/bulk-listings',
-        responseMode: 'responseNode',
+        responseMode: 'lastNode',
         options: {},
       },
       id: uuid(),
@@ -87,18 +87,6 @@ const workflow = {
       typeVersion: 2,
       position: [1200, 340],
     },
-    {
-      parameters: {
-        respondWith: 'allIncomingItems',
-        options: {},
-      },
-      id: uuid(),
-      name: 'Respond to Webhook',
-      type: 'n8n-nodes-base.respondToWebhook',
-      typeVersion: 1.1,
-      position: [1440, 480],
-      continueOnFail: true,
-    },
   ],
   connections: {
     'Manual Trigger':              { main: [[{ node: 'Sample Input (Manual)', type: 'main', index: 0 }]] },
@@ -106,7 +94,6 @@ const workflow = {
     'Webhook Trigger':             { main: [[{ node: 'Normalize Input',       type: 'main', index: 0 }]] },
     'Normalize Input':             { main: [[{ node: 'Generate Wax | Wane Copy', type: 'main', index: 0 }]] },
     'Generate Wax | Wane Copy':    { main: [[{ node: 'Build Amazon + Walmart CSVs', type: 'main', index: 0 }]] },
-    'Build Amazon + Walmart CSVs': { main: [[{ node: 'Respond to Webhook', type: 'main', index: 0 }]] },
   },
   active: false,
   settings: {

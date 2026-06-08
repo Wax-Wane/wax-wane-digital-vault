@@ -79,13 +79,16 @@ function normalize(raw, idx) {
 const out = [];
 for (const item of items) {
   const body = item.json || {};
+  const requestBody = body.body || {};
   let rawList = [];
   if (Array.isArray(body)) rawList = body;
   else if (Array.isArray(body.items)) rawList = body.items;
   else if (typeof body.csv === 'string' && body.csv.includes(',')) rawList = parseCsv(body.csv);
   else if (body.productName || body.product_name || body.sku) rawList = [body];
-  else if (body.body && (Array.isArray(body.body.items) || body.body.productName)) {
-    rawList = Array.isArray(body.body.items) ? body.body.items : [body.body];
+  else if (typeof requestBody.csv === 'string' && requestBody.csv.includes(',')) rawList = parseCsv(requestBody.csv);
+  else if (Array.isArray(requestBody.items)) rawList = requestBody.items;
+  else if (requestBody.productName || requestBody.product_name || requestBody.sku) {
+    rawList = [requestBody];
   }
 
   if (!rawList.length) {
