@@ -85,18 +85,25 @@ for wf in data.get('data', data if isinstance(data, list) else []):
 }
 
 install_workflow() {
-  local payload existing_id response new_id
+  local payload existing_id response http_code new_id
   payload="$(prepare_payload)"
 
   existing_id="$(find_existing_id || true)"
 
   if [[ -n "${existing_id}" ]]; then
     echo "Updating existing workflow id=${existing_id} ..."
-    response="$(curl -sS -X PUT "${N8N_URL}/api/v1/workflows/${existing_id}" \
+    response="$(curl -sS -w $'\n%{http_code}' -X PUT "${N8N_URL}/api/v1/workflows/${existing_id}" \
       -H "Authorization: Bearer ${N8N_API_KEY}" \
       -H "Content-Type: application/json" \
       --data-binary "${payload}")"
-    new_id="${existing_id}"
+    http_code="${response##*$'\n'}"
+    response="${response%$'\n'*}"
+    if [[ "${http_code}" != 2* ]]; then
+      echo "ERROR: n8n workflow update failed with HTTP ${http_code}."
+      echo "${response}"
+      exit 1
+    fi
+    new_id="$(python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" <<<"${response}")"
   else
     echo "Creating new workflow ..."
     response="$(curl -sS -X POST "${N8N_URL}/api/v1/workflows" \

@@ -107,7 +107,7 @@ function toWalmartRow(p) {
     'Long Description': c.longDescription,
     'Main Image URL': p.mainImageUrl,
     'Price': p.price ? p.price.toFixed(2) : '',
-    'Shipping Weight (lb)': p.weightLb || '',
+    'Shipping Weight (lb)': p.weightLb == null ? '' : p.weightLb,
     'Site Description': c.shortDescription,
     'Key Features 1': c.bullets[0] || '',
     'Key Features 2': c.bullets[1] || '',
