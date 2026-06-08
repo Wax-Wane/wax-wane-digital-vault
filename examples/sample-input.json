@@ -1,0 +1,39 @@
+{
+  "items": [
+    {
+      "sku": "HM-CRM-001",
+      "productName": "Lunar Bloom Renewal Cream",
+      "brand": "HARAMOON",
+      "brandLine": "HARAMOON",
+      "category": "Beauty",
+      "size": "50 ml",
+      "price": 68,
+      "quantity": 250,
+      "weightLb": 0.45,
+      "productId": "012345678905",
+      "mainImageUrl": "https://cdn.example.com/haramoon/lunar-bloom-50ml-main.jpg",
+      "ingredients": ["Niacinamide 4%", "Squalane", "Bakuchiol", "Ceramide NP"],
+      "targetAudience": ["dry-to-normal skin", "evening rituals"],
+      "keywords": ["clinical skincare", "barrier repair", "luxury moisturizer"],
+      "specs": { "descriptor": "Renewal Cream", "benefitOne": "Restores barrier suppleness in measured, calibrated layers." }
+    },
+    {
+      "sku": "WW-CDL-014",
+      "productName": "Atelier Soy Candle Cedar Vetiver",
+      "brand": "Wax | Wane",
+      "brandLine": "Atelier",
+      "category": "Home Fragrance",
+      "size": "8 oz",
+      "color": "Bone",
+      "price": 42,
+      "quantity": 500,
+      "weightLb": 0.95,
+      "productId": "098765432104",
+      "mainImageUrl": "https://cdn.example.com/atelier/cedar-vetiver-8oz.jpg",
+      "ingredients": ["100% soy wax", "cotton wick", "phthalate-free fragrance"],
+      "targetAudience": ["evening hours", "minimal interiors"],
+      "keywords": ["soy candle", "cedar vetiver", "quiet luxury home"],
+      "specs": { "descriptor": "Hand-Poured Soy Candle" }
+    }
+  ]
+}
