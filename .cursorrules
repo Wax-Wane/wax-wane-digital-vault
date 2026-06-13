@@ -1,0 +1,63 @@
+# Wax | Wane — Cursor Rules
+# This file tells Cursor how to behave for ALL code and automation in this project.
+# Read docs/TONE_OF_VOICE.md and docs/AUTOMATION_ARCHITECTURE.md before doing anything.
+
+## Identity
+You are building automations and tools for Samantha, the founder of Wax | Wane (waxandwane.store)
+and LNK.Nebraska (lnknebraska.com). She is a solo entrepreneur managing multiple brands and sales
+channels. Your job is to make her life simpler, not more complicated.
+
+## Non-Negotiable Rules
+
+### Content & Tone
+- Always use Title Case for headlines and product titles.
+- Crystal descriptions use Gemini-style grade callouts: Collector Grade, Prism Grade, Rare Grade, Museum Quality.
+- Never make direct medical or healing claims. Use "associated with," "crystal lore suggests," etc.
+- Amazon bullet points: ALL CAPS LABEL: normal text description.
+- Natural variation in crystals is always a feature, never a flaw. Include a disclaimer.
+- Read docs/TONE_OF_VOICE.md for the full style guide.
+
+### Automation Architecture
+- Shopify is the single source of truth. All generated content must be written back as Shopify metafields.
+- All n8n automations built by AI agents must be prefixed with "MANUS" in their workflow name.
+- Always validate URLs before including them in social media posts.
+- Read docs/AUTOMATION_ARCHITECTURE.md for the full system design.
+
+### Secrets & Credentials
+- NEVER hardcode secrets in code files. Use environment variables.
+- Secret names follow the pattern in config-vault/registry/credentials.yaml (see wax-wane/config-vault repo).
+- Shopify store: 6f97d0.myshopify.com
+- Primary Shopify Admin API token env var: WAX_WANE_SHOPIFY_TOKEN (may need refresh)
+- Veeqo API token env var: VEEQO_API_KEY (may need refresh)
+- OpenAI API key env var: OPENAI_API_KEY
+- Veeqo Channel IDs: Walmart=1009103, TikTok=1044457, Amazon=1049861, Etsy=1049903
+- Facebook Page ID: 203171376205580
+- Facebook Catalog ID: 1162102955270557
+
+### Shopify Reference Data
+- Store: 6f97d0.myshopify.com
+- API Version: 2025-01 (use this, not 2024-01)
+- Blog IDs:
+  - Wax | Wane Blog: 119979376952
+  - Crystals Blog: 115710034232
+  - EMF and EMI: 115660620088
+  - HARAMOON K-Beauty: 115858669880
+  - LNK Directory: 119422058808
+
+### Code Style
+- Python: use requests library, always handle errors gracefully, log results to JSON files.
+- JavaScript/Node: use fetch or axios, async/await pattern.
+- n8n workflows: use Code nodes for data transformation, HTTP Request nodes for API calls.
+- Always add comments explaining what each section does.
+- Save scripts to files, never run inline.
+
+## When Tokens/Keys Look Stale
+If an API call returns 401 or 403, note it as a "stale credential" and continue with other tasks.
+Do NOT delete old tokens — they serve as a reference for what key names to use when refreshed.
+The secondary/fallback tokens are documented in the registry; try them before declaring a credential dead.
+
+## Project Structure
+- n8n-workflows/ — importable n8n JSON workflow files
+- docs/ — tone of voice, architecture, and setup guides
+- scripts/ — utility scripts (Python, shell)
+- .cursorrules — this file
