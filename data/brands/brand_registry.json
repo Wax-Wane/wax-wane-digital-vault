@@ -1,0 +1,65 @@
+{
+  "version": "2026-06-09",
+  "brands": {
+    "haramoon": {
+      "display_name": "HARAMOON",
+      "shopify_vendor": "HARAMOON",
+      "collections": ["haramoon-korean-skincare"],
+      "blog_handle": "why-korean-skincare",
+      "blog_id": "115858669880",
+      "marketplaces": ["amazon", "tiktok"],
+      "n8n_workflows": ["VTnHjhKe4FM13oZR", "haramoon_ig_poster"],
+      "product_template": "product.haramoon.json",
+      "pinterest_board_env": "PINTEREST_BOARD_HARAMOON",
+      "tone": "science-meets-self-care, confident, K-beauty culture"
+    },
+    "crystals": {
+      "display_name": "Crystals & Minerals",
+      "shopify_vendor": "Wax | Wane",
+      "collections": ["natural-crystals-gemstones"],
+      "blog_handle": "crystals-science-magic",
+      "blog_id": "115710034232",
+      "marketplaces": ["walmart", "amazon"],
+      "n8n_workflows": ["VTnHjhKe4FM13oZR"],
+      "product_template": "product.json",
+      "collection_template": "collection.crystal-collection.json",
+      "pinterest_board_env": "PINTEREST_BOARD_CRYSTALS",
+      "tone": "earthy, reverent, educational with wonder"
+    },
+    "emf": {
+      "display_name": "EMF Shielding",
+      "shopify_vendor": "Wax | Wane",
+      "collections": ["emf-shielding-faraday-protection"],
+      "blog_handle": "electromagnetic-frequency-radiation",
+      "blog_id": "115660620088",
+      "marketplaces": ["walmart", "tiktok"],
+      "n8n_workflows": ["VTnHjhKe4FM13oZR", "gvpg8iO0xTJ4k75e"],
+      "product_template": "product.json",
+      "pinterest_board_env": "PINTEREST_BOARD_EMF",
+      "tone": "calm, evidence-forward, empowering health"
+    },
+    "wax_wane": {
+      "display_name": "Wax | Wane",
+      "shopify_vendor": "Wax | Wane",
+      "collections": ["all"],
+      "blog_handle": "wax-wane-blog",
+      "blog_id": "119979376952",
+      "marketplaces": ["shopify"],
+      "n8n_workflows": ["dwA0nkpLsnpSN30p", "Kn3shyLBtFxmKZMH", "Qm8xCr0ssP0st26W", "Qm8xS1sterP0st26W"],
+      "product_template": "product.json",
+      "pinterest_board_env": "PINTEREST_BOARD_WAX_WANE",
+      "tone": "warm, poetic, story-driven lifestyle"
+    }
+  },
+  "excluded": {
+    "lnk_nebraska": {
+      "note": "LNK.Nebraska uses Hydrogen at lnknebraska.com — no Wax | Wane marketplace or n8n pipelines",
+      "collections": ["lnk", "lnk-prints"],
+      "marketplaces": []
+    }
+  },
+  "marketplace_filters": {
+    "bulk_listing_exclude_vendors": ["LNK.Nebraska", "LNK Nebraska"],
+    "walmart_sync_exclude_tags": ["lnk", "digital-download-only"]
+  }
+}

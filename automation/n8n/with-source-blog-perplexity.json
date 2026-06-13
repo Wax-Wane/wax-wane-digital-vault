@@ -1,0 +1,510 @@
+{
+  "id": "Kn3shyLBtFxmKZMH",
+  "name": "with Source Blog \u2014 Perplexity Engine (Fixed)",
+  "active": true,
+  "nodes": [
+    {
+      "id": "google-auth-setter",
+      "name": "Set Google Auth Header",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1900,
+        -144
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "g1",
+              "name": "googleAccessToken",
+              "value": "={{$env.GOOGLE_ACCESS_TOKEN}}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 14 * * 3,6"
+            }
+          ]
+        }
+      },
+      "id": "57f67efd-b61e-4a60-9f0e-1e4b24802b21",
+      "name": "Every Wed & Sat 2:30PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1648,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://docs.google.com/spreadsheets/d/1gd-1SNttvSF6mVXOpd3og1Y4Gq7zgPEfDQ6-PFC5eoo/export?format=csv&gid=0",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer ={{$env.GOOGLE_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "d720d9cd-093a-4d08-a7c7-fd54c21c3f1f",
+      "name": "Fetch URL Source Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1424,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseCsvLine(line) {\n  const vals = []; let inQuote = false, cur = '';\n  for (const ch of line) {\n    if (ch === '\"') inQuote = !inQuote;\n    else if (ch === ',' && !inQuote) { vals.push(cur.trim()); cur = ''; }\n    else cur += ch;\n  }\n  vals.push(cur.trim()); return vals;\n}\nconst raw = $input.first().json.data || '';\nconst lines = raw.split('\\n').filter(l => l.trim());\nconst rows = lines.slice(1).map(parseCsvLine);\nfunction isDone(s) {\n  s = (s || '').toLowerCase().trim();\n  if (!s) return false;\n  return ['done:', 'drafted', 'published', 'done', 'processing', 'shopify'].some(m => s === m || s.startsWith(m));\n}\nfunction topicFromUrl(url) {\n  try {\n    const slug = new URL(url).pathname.split('/').filter(Boolean).pop() || 'wellness';\n    return slug.replace(/[-_]+/g, ' ').trim();\n  } catch { return 'wellness research'; }\n}\nfor (let i = 0; i < rows.length; i++) {\n  const row = rows[i];\n  const sourceUrl = (row[0] || '').trim();\n  const sourceContent = (row[1] || '').trim();\n  const status = (row[2] || '').trim();\n  if (!sourceUrl.startsWith('http')) continue;\n  if (isDone(status)) continue;\n  const topic = topicFromUrl(sourceUrl);\n  return [{ json: { rowIndex: i + 2, sourceUrl, sourceContent, topic, keywords: topic, pipeline: 'url-source' } }];\n}\nreturn [{ json: { rowIndex: -1, message: 'No pending URL rows' } }];"
+      },
+      "id": "36bc1186-cdb7-4e94-a817-9c7188695c6e",
+      "name": "Find Next Source Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rowIndex }}",
+              "rightValue": -1,
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "a4b7cd37-40fc-48a5-b3a2-65e791206fde",
+      "name": "Has Pending Row?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -992,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.sourceUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "c56f25af-95a9-4576-8fbc-fe42765c1e20",
+      "name": "Fetch Source Article",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -768,
+        -144
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const findRow = $('Find Next Source Row').first().json;\nlet text = '';\nif ((findRow.sourceContent || '').length >= 200) {\n  text = findRow.sourceContent.replace(/\\s+/g, ' ').trim().substring(0, 3000);\n} else {\n  const html = $input.first().json.data || '';\n  text = html.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi,'').replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi,'')\n    .replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim().substring(0, 3000);\n}\nreturn [{ json: { extractedText: text, sourceUrl: findRow.sourceUrl, topic: findRow.topic, keywords: findRow.keywords, title: findRow.topic } }];"
+      },
+      "id": "c6510f0e-81a0-44ac-b21e-0929702c4a6b",
+      "name": "Extract Article Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.perplexity.ai/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.PERPLEXITY_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"sonar\",\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Write Wax | Wane editorial wellness blog (Clinical Glow). Semantic HTML with <h1>. No hype or emojis.\"},\n    {\"role\":\"user\",\"content\":\"Topic: {{ $json.topic }}. Keywords: {{ $json.keywords }}.\\n\\nSource material:\\n\\n{{ $json.extractedText.replace(/\\\\/g, '\\\\\\\\').replace(/\\\"/g, '\\\\\\\"').replace(/\\n/g, '\\\\n') }}\\n\\nSource: {{ $json.sourceUrl }}\"}\n  ]\n}",
+        "options": {}
+      },
+      "id": "9ff08b01-f2d2-4012-aad9-f384457bf65e",
+      "name": "Perplexity AI Writer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -304,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pplx = $input.first().json;\nlet blogHtml = pplx.choices[0].message.content;\nblogHtml = blogHtml.replace(/^```html\\s*/i,'').replace(/^```\\s*/i,'').replace(/\\s*```$/i,'').trim();\nconst findRow = $('Find Next Source Row').first().json;\nconst titleMatch = blogHtml.match(/<h1[^>]*>(.*?)<\\/h1>/i);\nconst title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g,'').trim() : (findRow.title || findRow.topic);\nconst handle = title.toLowerCase().replace(/[^a-z0-9\\s-]/g,'').replace(/\\s+/g,'-').replace(/^-+|-+$/g,'').substring(0,60);\nconst stripped = blogHtml.replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();\nreturn [{ json: { title, handle, body_html: blogHtml, metaDescription: stripped.substring(0,160), keywords: findRow.keywords || findRow.topic, sourceUrl: findRow.sourceUrl || findRow.docUrl, rowIndex: findRow.rowIndex, caption: `New on the Wax & Wane blog: \"${title}\"\\n\\nwaxandwane.store/blogs/wax-wane-blog/${handle}` } }];"
+      },
+      "id": "6cc877d9-2c16-469b-abca-62d3e9c6b24f",
+      "name": "Format Blog & Caption",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://6f97d0.myshopify.com/admin/api/2025-01/blogs/119979376952/articles.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Shopify-Access-Token",
+              "value": "={{$env.WAX_WANE_SHOPIFY_ADMIN_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"article\": {\n    \"title\": {{ JSON.stringify($json.title) }},\n    \"body_html\": {{ JSON.stringify($json.body_html) }},\n    \"handle\": {{ JSON.stringify($json.handle) }},\n    \"author\": \"Wax | Wane\",\n    \"published\": false,\n    \"tags\": \"source-blog,with-source\",\n    \"metafields\": [{\"key\":\"description_tag\",\"value\":{{ JSON.stringify($json.metaDescription) }},\"type\":\"single_line_text_field\",\"namespace\":\"global\"}]\n  }\n}",
+        "options": {}
+      },
+      "id": "1179b8df-a2d9-4cb6-b676-9c7ba7132076",
+      "name": "Post Draft to Shopify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        144,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/me/feed",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "587b7740d2e62ee7869fbddba352852c"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.caption }}"
+            },
+            {
+              "name": "link",
+              "value": "={{ $json.articleUrl }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dbd9e7a2-2cb7-4a81-8425-a314fcfe3c61",
+      "name": "Post to Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        384,
+        -256
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/v2/ugcPosts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer AQV1H6lrHGy4WXnTf5RpS_AkbKOQ9X-jEL2kC2KIgUuf4wuVPYD3PwYvEXHOLxy-rEJ9q-PTyb-ttoKSEgRmXug6tE-2oeqdzoxuBxNv7KoW0qm6MjZRhPGmWWd2iq5ToSAhpG05LzNVoYyDXo4OCC0PuicONN2zqFMexG1aNHEkKwMDaHwrUo-nBykkVYrQ4n4ZnEZNpCf6_JBEL9A823kgCEJAsk4Zu24QlH_pyGZnMhPYtIpMS7P2_jZIo4GhPokCjHPGmz0aQe1H5QQ-efn0FtzUmti9JgJLuDW0aMP1Xj_q1Kr5gM2IBYw3F4LnlyzZuVOHTE2BMbFR-rCw6NqhHGEkoA"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"author\": \"urn:li:organization:103482502\",\n  \"lifecycleState\": \"PUBLISHED\",\n  \"specificContent\": {\n    \"com.linkedin.ugc.ShareContent\": {\n      \"shareCommentary\": {\n        \"text\": {{ JSON.stringify($json.caption) }}\n      },\n      \"shareMediaCategory\": \"ARTICLE\",\n      \"media\": [\n        {\n          \"status\": \"READY\",\n          \"originalUrl\": {{ JSON.stringify($json.articleUrl) }}\n        }\n      ]\n    }\n  },\n  \"visibility\": {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n}",
+        "options": {}
+      },
+      "id": "ccdd02ab-be5f-425f-b5e5-c9b558e3fd09",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        384,
+        -48
+      ],
+      "disabled": true
+    },
+    {
+      "id": "70ef0b7f-1e8f-4f2c-8a9f-9295bc24ab27",
+      "name": "Extract Article Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        -144
+      ],
+      "parameters": {
+        "jsCode": "const shopifyResponse = $input.first().json;\nconst article = shopifyResponse.article;\nconst blogData = $('Format Blog & Caption').first().json;\nif (!article?.id) throw new Error('Shopify failed: ' + JSON.stringify(shopifyResponse));\nconst articleUrl = `https://www.waxandwane.store/blogs/wax-wane-blog/${article.handle}`;\nconst adminUrl = `https://admin.shopify.com/store/6f97d0/articles/${article.id}`;\nreturn [{ json: { articleId: article.id, title: article.title, handle: article.handle, articleUrl, adminUrl, body_html: blogData.body_html, caption: blogData.caption, sourceUrl: blogData.sourceUrl, keywords: blogData.keywords, rowIndex: blogData.rowIndex, metaDescription: blogData.metaDescription } }];"
+      }
+    },
+    {
+      "id": "f820bf88-08f9-485b-89c9-a11d82fb120f",
+      "name": "No Rows \u2014 Stop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -992,
+        80
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'skipped', message: 'No pending inline-source rows', timestamp: new Date().toISOString() } }];"
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "support@thehappiesthourcompany.com",
+        "subject": "=DRAFT READY: {{ $json.title }}",
+        "message": "=<html><body style=\"font-family: Georgia, serif; max-width: 680px; margin: 0 auto; padding: 24px; color: #1a1a1a; background: #fafaf8;\">\n<div style=\"border-top: 3px solid #1a1a1a; padding-top: 20px; margin-bottom: 28px;\">\n  <p style=\"font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #888; margin: 0;\">Wax | Wane \u2014 Automated Blog Draft</p>\n</div>\n<h2 style=\"font-size: 24px; font-weight: 600; margin: 0 0 8px;\">{{ $json.title }}</h2>\n<p style=\"color: #777; font-size: 13px; margin: 0 0 24px;\">Keywords: {{ $json.keywords }}</p>\n<div style=\"background: #f0ede8; border-left: 3px solid #1a1a1a; padding: 14px 18px; margin-bottom: 24px; font-size: 13px;\">\n  <strong>Source:</strong> <a href=\"{{ $json.sourceUrl }}\" style=\"color: #1a1a1a;\">{{ $json.sourceUrl }}</a><br>\n  <strong>Article ID:</strong> {{ $json.articleId }} &nbsp;|&nbsp; <strong>Row:</strong> {{ $json.rowIndex }}\n</div>\n<div style=\"margin-bottom: 28px;\">\n  <a href=\"{{ $json.adminUrl }}\" style=\"display:inline-block; background:#1a1a1a; color:#fff; text-decoration:none; padding:12px 24px; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; margin-right:10px;\">Edit in Shopify Admin</a>\n  <a href=\"{{ $json.articleUrl }}\" style=\"display:inline-block; border:1px solid #1a1a1a; color:#1a1a1a; text-decoration:none; padding:12px 24px; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;\">Preview Draft</a>\n</div>\n<div style=\"background:#fff9ec; border:1px solid #e8d5a3; padding:14px 18px; border-radius:2px; margin-bottom:24px; font-size:13px;\">\n  <strong style=\"display:block; margin-bottom:8px;\">Before publishing, remember to:</strong>\n  <ul style=\"margin:0; padding-left:18px; color:#555; line-height:1.8;\">\n    <li>Add a featured image (required for social sharing)</li>\n    <li>Tag a related product to the article</li>\n    <li>Confirm SEO meta description is set</li>\n    <li>Set publish date if scheduling ahead</li>\n  </ul>\n</div>\n<details style=\"margin-bottom:20px;\">\n  <summary style=\"cursor:pointer; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#888;\">Preview Draft HTML</summary>\n  <div style=\"margin-top:14px; padding:18px; border:1px solid #ddd; font-size:14px; line-height:1.75; background:#fff;\">{{ $json.body_html }}</div>\n</details>\n<hr style=\"border:none; border-top:1px solid #e0e0e0; margin:20px 0;\">\n<p style=\"font-size:11px; color:#aaa;\">Wax | Wane Blog Engine \u2014 auto-drafted {{ $now.format('MMMM D, YYYY') }}</p>\n</body></html>",
+        "options": {}
+      },
+      "id": "email-src-approval",
+      "name": "Email Draft Approval",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        -144
+      ],
+      "webhookId": "3cb7aa5e-c797-4053-a3d6-44f2db3077c3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth-waxwane",
+          "name": "Gmail OAuth2 Wax Wane"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "id": "draft-complete-stop",
+      "name": "Draft Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -144
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'draft_created', title: $json.title, articleUrl: $json.articleUrl, adminUrl: $json.adminUrl, rowIndex: $json.rowIndex, finishedAt: new Date().toISOString() } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Find Next Source Row": {
+      "main": [
+        [
+          {
+            "node": "Has Pending Row?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Pending Row?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Source Article",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Rows \u2014 Stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Source Article": {
+      "main": [
+        [
+          {
+            "node": "Extract Article Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Article Text": {
+      "main": [
+        [
+          {
+            "node": "Perplexity AI Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity AI Writer": {
+      "main": [
+        [
+          {
+            "node": "Format Blog & Caption",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Blog & Caption": {
+      "main": [
+        [
+          {
+            "node": "Post Draft to Shopify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Draft to Shopify": {
+      "main": [
+        [
+          {
+            "node": "Extract Article Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Article Data": {
+      "main": [
+        [
+          {
+            "node": "Draft Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Wed & Sat 2:30PM": {
+      "main": [
+        [
+          {
+            "node": "Set Google Auth Header",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Google Auth Header": {
+      "main": [
+        [
+          {
+            "node": "Fetch URL Source Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch URL Source Sheet": {
+      "main": [
+        [
+          {
+            "node": "Find Next Source Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "staticData": {
+    "node:Every Sun & Thu 2:30PM": {
+      "recurrenceRules": []
+    },
+    "node:Every Wed & Sat 2:30PM": {
+      "recurrenceRules": []
+    }
+  }
+}

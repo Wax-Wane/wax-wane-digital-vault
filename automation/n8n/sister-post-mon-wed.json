@@ -1,0 +1,317 @@
+{
+  "id": "Qm8xS1sterP0st26W",
+  "name": "Wax | Wane \u2014 Sister Post (Mon/Wed Product Spotlight)",
+  "active": true,
+  "nodes": [
+    {
+      "id": "sis-sched",
+      "name": "Mon & Wed 10AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * 1,3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sis-cap",
+      "name": "Build Sister Captions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst staticData = $getWorkflowStaticData('global');\nstaticData.sisterPosted = staticData.sisterPosted || {};\nconst sisterPosted = staticData.sisterPosted;\nconst feeds = [\n  'https://waxandwane.store/blogs/wax-wane-blog.atom',\n  'https://waxandwane.store/blogs/why-korean-skincare.atom',\n  'https://waxandwane.store/blogs/electromagnetic-frequency-radiation.atom',\n  'https://waxandwane.store/blogs/crystals-science-magic.atom',\n];\nconst PRODUCT_KEYWORDS = {\n  haramoon: { name: 'HARAMOON K-Beauty Collection', keyword: 'haramoon', shop_url: 'https://waxandwane.store/collections/haramoon-korean-skincare', hashtags: '#HARAMOON #KBeauty #KoreanSkincare #GlowingSkin #SkinBarrier #GlassSkin #SkincareRoutine #KBeautyCommunity #WaxAndWane', emoji: '\u2728\ud83d\udc99' },\n  faraday: { name: 'Faraday Bag EMF Protection', keyword: 'faraday', shop_url: 'https://waxandwane.store/collections/emf-shielding-faraday-protection', hashtags: '#FaradayBag #EMFProtection #TechHealth #DigitalWellness #5GProtection #EMFShielding #WaxAndWane', emoji: '\ud83d\udee1\ufe0f\u26a1' },\n  emf: { name: 'EMF Protection Collection', keyword: 'emf', shop_url: 'https://waxandwane.store/collections/emf-shielding-faraday-protection', hashtags: '#EMFProtection #FaradayBag #TechHealth #DigitalWellness #5GProtection #WaxAndWane', emoji: '\ud83d\udee1\ufe0f\u26a1' },\n  moonstone: { name: 'Moonstone Crystal Collection', keyword: 'moonstone', shop_url: 'https://waxandwane.store/collections/natural-crystals-gemstones', hashtags: '#Moonstone #Crystals #CrystalHealing #Wellness #Spirituality #CrystalEnergy #WaxAndWane', emoji: '\ud83c\udf19\ud83d\udc8e' },\n  crystal: { name: 'Crystal & Wellness Collection', keyword: 'crystal', shop_url: 'https://waxandwane.store/collections/natural-crystals-gemstones', hashtags: '#Crystals #CrystalHealing #Wellness #Spirituality #CrystalEnergy #Mindfulness #WaxAndWane', emoji: '\ud83d\udc8e\u2728' },\n  skincare: { name: 'HARAMOON K-Beauty Skincare', keyword: 'skincare', shop_url: 'https://waxandwane.store/collections/haramoon-korean-skincare', hashtags: '#Skincare #KBeauty #HARAMOON #GlowingSkin #SkincareRoutine #SkinBarrier #WaxAndWane', emoji: '\u2728\ud83d\udc99' },\n  serum: { name: 'HARAMOON Skincare Serums', keyword: 'serum', shop_url: 'https://waxandwane.store/collections/haramoon-korean-skincare', hashtags: '#Serum #KBeauty #HARAMOON #GlowingSkin #SkincareRoutine #AntiAging #WaxAndWane', emoji: '\u2728\ud83d\udc99' },\n};\n\nfunction parseAtomLinks(xml) {\n  return xml.split('<entry>').slice(1)\n    .map(b => (b.match(/<link[^>]+href=\"([^\"]+)\"/) || [])[1])\n    .filter(Boolean);\n}\n\nconst allPosts = [];\nfor (const feedUrl of feeds) {\n  try {\n    const xml = await this.helpers.httpRequest({ method: 'GET', url: feedUrl });\n    for (const link of parseAtomLinks(String(xml))) {\n      if (!allPosts.includes(link)) allPosts.push(link);\n    }\n  } catch (e) { /* skip feed */ }\n}\nif (!allPosts.length) return [{ json: { skip: true, message: 'No RSS posts found' } }];\n\nlet targetUrl = null;\nfor (const url of allPosts) {\n  if (!sisterPosted[url]) { targetUrl = url; break; }\n}\nif (!targetUrl) {\n  staticData.sisterPosted = {};\n  targetUrl = allPosts[0];\n}\n\nconst html = await this.helpers.httpRequest({ method: 'GET', url: targetUrl });\nconst bodyText = String(html).replace(/<script[\\s\\S]*?<\\/script>/gi, '').replace(/<style[\\s\\S]*?<\\/style>/gi, '').replace(/<[^>]+>/g, ' ').toLowerCase();\nconst titleMatch = String(html).match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i);\nconst title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : targetUrl;\nconst og = String(html).match(/<meta\\s+property=[\"']og:image[\"']\\s+content=[\"']([^\"']+)[\"']/i);\nconst image_url = og ? og[1] : null;\n\nlet product = null;\nfor (const [kw, info] of Object.entries(PRODUCT_KEYWORDS)) {\n  if (bodyText.includes(kw)) { product = info; break; }\n}\nif (!product) product = PRODUCT_KEYWORDS.skincare;\n\nconst fbCaption = `${product.emoji} Inspired by our latest blog post!\\n\\nWe just published \"${title}\" and wanted to spotlight the products that make it all possible.\\n\\n\u2728 Featured: ${product.name}\\n\\n\ud83d\udcd6 Read the full article: ${targetUrl}\\n\\n\ud83d\udecd\ufe0f Shop now: ${product.shop_url}\\n\\n#WaxAndWane #ShopSmall #SmallBusiness ${product.hashtags}`;\nconst igCaption = `${product.emoji} We just dropped a new blog post and had to spotlight this!\\n\\n${product.name} - because your routine deserves the best.\\n\\n\ud83d\udc46 Link in bio to shop + read the full article!\\n\\n${product.hashtags} #ShopSmall #SmallBusiness #WaxAndWane`;\n\nreturn [{ json: { skip: false, url: targetUrl, title, image_url, product, fbCaption, igCaption } }];\n"
+      }
+    },
+    {
+      "id": "sis-if",
+      "name": "Has Sister Target?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "sis-fb",
+      "name": "Sister Post Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v25.0/203171376205580/photos",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.fbCaption }}"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.image_url }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sis-ig1",
+      "name": "Sister IG Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v25.0/17841458399612807/media",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.igCaption }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sis-ig2",
+      "name": "Sister IG Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v25.0/17841458399612807/media_publish",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}"
+            },
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sis-done",
+      "name": "Mark Sister Posted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        140,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "\nconst art = $('Build Sister Captions').first().json;\nif (art.skip) return [{ json: art }];\nconst staticData = $getWorkflowStaticData('global');\nstaticData.sisterPosted = staticData.sisterPosted || {};\nstaticData.sisterPosted[art.url] = { at: new Date().toISOString() };\nreturn [{ json: { status: 'sister_posted', url: art.url, product: art.product?.name, finishedAt: new Date().toISOString() } }];\n"
+      }
+    },
+    {
+      "id": "sis-stop",
+      "name": "No Sister Target \u2014 Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        160
+      ]
+    }
+  ],
+  "connections": {
+    "Mon & Wed 10AM": {
+      "main": [
+        [
+          {
+            "node": "Build Sister Captions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sister Captions": {
+      "main": [
+        [
+          {
+            "node": "Has Sister Target?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Sister Target?": {
+      "main": [
+        [
+          {
+            "node": "Sister Post Facebook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sister IG Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Sister Target \u2014 Stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sister Post Facebook": {
+      "main": [
+        [
+          {
+            "node": "Mark Sister Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sister IG Container": {
+      "main": [
+        [
+          {
+            "node": "Sister IG Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sister IG Publish": {
+      "main": [
+        [
+          {
+            "node": "Mark Sister Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": {
+    "sisterPosted": {
+      "https://waxandwane.store/blogs/wax-wane-blog/what-are-faraday-bags-and-how-do-they-work": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/moonstone": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/what-is-your-frequency-no-really-science-has-an-answer": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/%E2%9C%A8-haramoon-the-complete-skin-barrier-ritual": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/we-shouldnt-have-to-be-chemists-to-figure-out-what-products-are-making-us-sick": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/why-korean-skincare/allantoin_-the-quiet-healer-your-skin-craves": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/why-korean-skincare/ingredient-spotlight_-why-coconut-derived-cleansing-agents-are-changing-the-game": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/from-tight-to-taut_-the-real-timeline-for-skin-firmness-gains": {
+        "seeded": true
+      }
+    }
+  }
+}

@@ -1,0 +1,293 @@
+{
+  "id": "VTnHjhKe4FM13oZR",
+  "name": "Wax | Wane \u2014 Bulk Listing Generator (Amazon + Walmart)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "3a372393-3714-4a6d-9a2c-77c08487b6d4",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"items\": [\n    {\n      \"sku\": \"HM-CRM-001\",\n      \"productName\": \"Lunar Bloom Renewal Cream\",\n      \"brand\": \"HARAMOON\",\n      \"brandLine\": \"HARAMOON\",\n      \"category\": \"Beauty\",\n      \"size\": \"50 ml\",\n      \"price\": 68,\n      \"quantity\": 250,\n      \"weightLb\": 0.45,\n      \"productId\": \"012345678905\",\n      \"mainImageUrl\": \"https://cdn.example.com/haramoon/lunar-bloom-50ml-main.jpg\",\n      \"ingredients\": [\"Niacinamide 4%\", \"Squalane\", \"Bakuchiol\", \"Ceramide NP\"],\n      \"targetAudience\": [\"dry-to-normal skin\", \"evening rituals\"],\n      \"keywords\": [\"clinical skincare\", \"barrier repair\", \"luxury moisturizer\"],\n      \"specs\": { \"descriptor\": \"Renewal Cream\", \"benefitOne\": \"Restores barrier suppleness in measured, calibrated layers.\" }\n    },\n    {\n      \"sku\": \"WW-CDL-014\",\n      \"productName\": \"Atelier Soy Candle Cedar Vetiver\",\n      \"brand\": \"Wax | Wane\",\n      \"brandLine\": \"Atelier\",\n      \"category\": \"Home Fragrance\",\n      \"size\": \"8 oz\",\n      \"color\": \"Bone\",\n      \"price\": 42,\n      \"quantity\": 500,\n      \"weightLb\": 0.95,\n      \"productId\": \"098765432104\",\n      \"mainImageUrl\": \"https://cdn.example.com/atelier/cedar-vetiver-8oz.jpg\",\n      \"ingredients\": [\"100% soy wax\", \"cotton wick\", \"phthalate-free fragrance\"],\n      \"targetAudience\": [\"evening hours\", \"minimal interiors\"],\n      \"keywords\": [\"soy candle\", \"cedar vetiver\", \"quiet luxury home\"],\n      \"specs\": { \"descriptor\": \"Hand-Poured Soy Candle\" }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "4123c45f-b6b0-4f67-a9df-c0e2e4c16337",
+      "name": "Sample Input (Manual)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wax-wane/bulk-listings",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d9ebb902-9f9c-4da6-bef2-60ea7c01f23c",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        288
+      ],
+      "webhookId": "8a9809b5-93d3-46f9-83b8-feec5633eb63"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Input \u2014 Wax | Wane bulk listing generator\nfunction parseCsv(text) {\n  const rows = [];\n  let row = [];\n  let cell = '';\n  let inQuotes = false;\n  for (let i = 0; i < text.length; i++) {\n    const c = text[i];\n    if (inQuotes) {\n      if (c === '\"' && text[i + 1] === '\"') { cell += '\"'; i++; }\n      else if (c === '\"') { inQuotes = false; }\n      else { cell += c; }\n    } else {\n      if (c === '\"') inQuotes = true;\n      else if (c === ',') { row.push(cell); cell = ''; }\n      else if (c === '\\n') { row.push(cell); rows.push(row); row = []; cell = ''; }\n      else if (c === '\\r') { /* ignore */ }\n      else cell += c;\n    }\n  }\n  if (cell.length > 0 || row.length > 0) { row.push(cell); rows.push(row); }\n  if (!rows.length) return [];\n  const header = rows.shift().map(h => h.trim());\n  return rows\n    .filter(r => r.some(v => v && v.trim().length))\n    .map(r => Object.fromEntries(header.map((h, i) => [h, (r[i] ?? '').trim()])));\n}\n\nfunction asArray(v) {\n  if (v == null) return [];\n  if (Array.isArray(v)) return v.filter(Boolean).map(s => String(s).trim()).filter(Boolean);\n  if (typeof v === 'string') {\n    return v.split(/\\r?\\n|\\||;/).map(s => s.trim()).filter(Boolean);\n  }\n  return [String(v)];\n}\n\nfunction normalize(raw, idx) {\n  const sku = String(raw.sku || raw.SKU || raw.itemSku || raw.item_sku || `WW-${Date.now()}-${idx + 1}`).trim();\n  const productName = String(raw.productName || raw.product_name || raw.name || raw.title || '').trim();\n  const brand = String(raw.brand || raw.brand_name || 'Wax | Wane').trim();\n  const brandLine = String(raw.brandLine || raw.brand_line || raw.line || '').trim();\n  const category = String(raw.category || raw.product_type || raw.feed_product_type || '').trim();\n  const sizeLabel = String(raw.size || raw.size_label || '').trim();\n  const colorLabel = String(raw.color || '').trim();\n  const price = Number(raw.price ?? raw.standard_price ?? raw.list_price ?? 0) || 0;\n  const quantity = Number(raw.quantity ?? raw.qty ?? 0) || 0;\n  const weightLb = Number(raw.weightLb ?? raw.shipping_weight ?? raw.weight ?? 0) || 0;\n  const productId = String(raw.productId || raw.gtin || raw.upc || raw.ean || raw.external_product_id || '').trim();\n  const productIdType = String(raw.productIdType || raw.external_product_id_type || (productId.length === 12 ? 'UPC' : productId.length === 13 ? 'EAN' : productId ? 'GTIN' : '')).trim();\n  const manufacturer = String(raw.manufacturer || brand).trim();\n  const partNumber = String(raw.partNumber || raw.part_number || sku).trim();\n  const mainImageUrl = String(raw.mainImageUrl || raw.main_image_url || raw.image || '').trim();\n  const features = asArray(raw.features || raw.bullets || raw.bullet_points);\n  const ingredients = asArray(raw.ingredients);\n  const targetAudience = asArray(raw.targetAudience || raw.target_audience_keywords);\n  const keywords = asArray(raw.keywords || raw.generic_keywords);\n  const specs = (raw.specs && typeof raw.specs === 'object') ? raw.specs : {};\n  const shortSummary = String(raw.shortSummary || raw.summary || '').trim();\n  const longDescription = String(raw.longDescription || raw.description || raw.product_description || '').trim();\n\n  return {\n    sku, productName, brand, brandLine, category,\n    sizeLabel, colorLabel, price, quantity, weightLb,\n    productId, productIdType, manufacturer, partNumber, mainImageUrl,\n    features, ingredients, targetAudience, keywords, specs,\n    shortSummary, longDescription,\n  };\n}\n\nconst out = [];\nfor (const item of items) {\n  const body = item.json || {};\n  let rawList = [];\n  if (Array.isArray(body)) rawList = body;\n  else if (Array.isArray(body.items)) rawList = body.items;\n  else if (typeof body.csv === 'string' && body.csv.includes(',')) rawList = parseCsv(body.csv);\n  else if (body.productName || body.product_name || body.sku) rawList = [body];\n  else if (body.body && (Array.isArray(body.body.items) || body.body.productName)) {\n    rawList = Array.isArray(body.body.items) ? body.body.items : [body.body];\n  }\n\n  if (!rawList.length) {\n    throw new Error('No products found in input. Provide { items: [...] } or a CSV string in `csv`.');\n  }\n  rawList.forEach((raw, idx) => out.push({ json: normalize(raw, idx) }));\n}\n\nreturn out;"
+      },
+      "id": "01da4c3f-fd85-4b6f-aea7-16af010dc6e9",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const LIMITS = {\n  amazon:  { title: 200, bullet: 500, description: 2000, keywords: 250 },\n  walmart: { name: 199,  short: 1000, long: 4000, feature: 500 },\n};\n\nconst HYPE = [\n  'amazing','best ever','must-have','life-changing','revolutionary','game-changer',\n  'world-class','incredible','unbelievable','jaw-dropping','perfect','flawless',\n  'cheap','bargain','deal','sale','% off','guaranteed',\n];\nconst EMOJI_RE = /[\\p{Extended_Pictographic}\\u200d]/gu;\n\nfunction dehype(s) {\n  if (!s) return '';\n  let out = String(s).replace(EMOJI_RE, '').replace(/!+/g, '.').replace(/\\s+/g, ' ').trim();\n  for (const h of HYPE) {\n    const re = new RegExp(`\\\\b${h.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\\\b`, 'gi');\n    out = out.replace(re, '');\n  }\n  return out.replace(/\\s+/g, ' ').replace(/\\s+([.,;:])/g, '$1').trim();\n}\n\nfunction clip(s, max) {\n  s = dehype(s);\n  if (!s) return '';\n  if (s.length <= max) return s;\n  const cut = s.slice(0, max);\n  const lastBreak = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf(', '), cut.lastIndexOf(' '));\n  return (lastBreak > max * 0.6 ? cut.slice(0, lastBreak) : cut).replace(/[\\s,;:.\\-]+$/g, '').trim();\n}\n\nfunction titleCase(s) {\n  const small = new Set(['a','an','and','as','at','but','by','for','in','of','on','or','the','to','vs','with']);\n  return String(s || '').split(/\\s+/).map((w, i) => {\n    const lw = w.toLowerCase();\n    if (i > 0 && small.has(lw)) return lw;\n    return lw.charAt(0).toUpperCase() + lw.slice(1);\n  }).join(' ');\n}\n\nfunction isHaramoon(p) {\n  const blob = `${p.brandLine || ''} ${p.brand || ''} ${p.category || ''}`.toLowerCase();\n  return /haramoon/.test(blob);\n}\n\nfunction brandSuffixFor(p) {\n  if (!isHaramoon(p)) return '';\n  return ' | Wax | Wane';\n}\n\nfunction buildTitle(p, hardCap) {\n  const head = titleCase(p.productName || 'Untitled Product');\n  const descriptor = p.specs && p.specs.descriptor ? titleCase(p.specs.descriptor) : '';\n  const formatBits = [];\n  if (descriptor) formatBits.push(descriptor);\n  if (p.colorLabel) formatBits.push(titleCase(p.colorLabel));\n  if (p.sizeLabel) formatBits.push(p.sizeLabel);\n\n  let title = [head, ...formatBits].filter(Boolean).join(' \u2014 ');\n  title = dehype(title);\n\n  const suffix = brandSuffixFor(p);\n  if (suffix) {\n    if (title.length + suffix.length > hardCap) {\n      title = clip(title, hardCap - suffix.length);\n    }\n    title = title + suffix;\n  } else {\n    title = clip(title, hardCap);\n  }\n  return title;\n}\n\nfunction defaultFeatures(p) {\n  const ing = (p.ingredients || []).slice(0, 3).join(', ');\n  const aud = (p.targetAudience && p.targetAudience.length) ? p.targetAudience[0] : 'considered routines';\n  return [\n    p.specs && p.specs.benefitOne ? p.specs.benefitOne : 'Calibrated formulation; restrained, measured performance with no excess.',\n    ing ? `Anchored in ${ing}.` : 'Composition selected for clarity, not noise.',\n    `Built for ${aud}.`,\n    'Considered packaging; minimal, recyclable substrate where format permits.',\n    'Quality-controlled in small lots; each unit batch-verified before release.',\n  ];\n}\n\nfunction buildBullets(p, hardCap) {\n  let raw = (p.features && p.features.length ? p.features : defaultFeatures(p)).slice(0, 5);\n  while (raw.length < 5) raw = raw.concat(defaultFeatures(p)).slice(0, 5);\n  return raw.map(b => {\n    let s = dehype(b);\n    s = s.charAt(0).toUpperCase() + s.slice(1);\n    if (!/[.?]$/.test(s)) s += '.';\n    return clip(s, Math.min(hardCap, 250));\n  });\n}\n\nfunction buildShortDescription(p, hardCap) {\n  if (p.shortSummary) return clip(p.shortSummary, hardCap);\n  const aud = p.targetAudience && p.targetAudience[0] ? p.targetAudience[0] : 'considered routines';\n  const ing = (p.ingredients || []).slice(0, 3).join(', ');\n  const s = `${titleCase(p.productName)} \u2014 a measured, polished addition to ${aud}.${\n    ing ? ` Composition: ${ing}.` : ''\n  } Performance is restrained, never theatrical.`;\n  return clip(s, hardCap);\n}\n\nfunction buildLongDescription(p, hardCap) {\n  if (p.longDescription) return clip(p.longDescription, hardCap);\n  const ing = (p.ingredients || []).join(', ');\n  const aud = (p.targetAudience || []).join(', ');\n  const paras = [\n    `${titleCase(p.productName)} is built around clarity. Formulation, finish, and feel are tuned for measured performance \u2014 the quiet kind of luxury that does not announce itself.`,\n    ing ? `Composition: ${ing}.` : '',\n    aud ? `Designed for: ${aud}.` : '',\n    'Each unit is small-lot, batch-verified, and shipped in considered packaging. Use as part of a deliberate routine; pair with complementary steps from the same line for cohesive results.',\n  ].filter(Boolean);\n  return clip(paras.join('\\n\\n'), hardCap);\n}\n\nfunction buildKeywords(p, hardCap) {\n  const base = new Set((p.keywords || []).map(s => s.toLowerCase()));\n  for (const w of (p.targetAudience || [])) base.add(String(w).toLowerCase());\n  for (const w of (p.ingredients || [])) base.add(String(w).toLowerCase());\n  if (isHaramoon(p)) { base.add('haramoon'); base.add('skincare'); }\n  return clip(Array.from(base).join(' '), hardCap);\n}\n\nconst out = [];\nfor (const item of items) {\n  const p = item.json;\n\n  const amazonTitle = buildTitle(p, LIMITS.amazon.title);\n  const walmartName = buildTitle(p, LIMITS.walmart.name);\n  const bullets    = buildBullets(p, LIMITS.amazon.bullet);\n  const shortDesc  = buildShortDescription(p, LIMITS.walmart.short);\n  const longDesc   = buildLongDescription(p, Math.max(LIMITS.amazon.description, LIMITS.walmart.long));\n  const keywords   = buildKeywords(p, LIMITS.amazon.keywords);\n\n  out.push({\n    json: {\n      ...p,\n      copy: {\n        amazonTitle,\n        walmartName,\n        bullets,\n        shortDescription: shortDesc,\n        longDescription: clip(longDesc, LIMITS.walmart.long),\n        amazonDescription: clip(longDesc, LIMITS.amazon.description),\n        keywords,\n        brandSuffixApplied: Boolean(brandSuffixFor(p)),\n        isHaramoonLine: isHaramoon(p),\n      },\n      voice: {\n        style: 'Clinical Glow / Quiet Luxury',\n        rules: {\n          noExclamations: true,\n          noEmojis: true,\n          noHype: true,\n          brandSuffix: 'Appended only to HARAMOON skincare-line titles',\n        },\n        limits: LIMITS,\n      },\n    },\n  });\n}\nreturn out;"
+      },
+      "id": "8a0d56f3-7f27-4e8c-85ab-2f66039a5ded",
+      "name": "Generate Wax | Wane Copy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const AMAZON_HEADERS = [\n  'feed_product_type','item_sku','brand_name','item_name','external_product_id',\n  'external_product_id_type','manufacturer','part_number','product_description',\n  'standard_price','quantity','main_image_url','bullet_point1','bullet_point2',\n  'bullet_point3','bullet_point4','bullet_point5','generic_keywords','item_type',\n  'target_audience_keywords',\n];\n\nconst WALMART_HEADERS = [\n  'SKU','Product ID Type','Product ID','Product Name','Brand','Short Description',\n  'Long Description','Main Image URL','Price','Shipping Weight (lb)','Site Description',\n  'Key Features 1','Key Features 2','Key Features 3','Key Features 4','Key Features 5',\n  'Manufacturer','Color','Size',\n];\n\nfunction csvEscape(v) {\n  if (v == null) return '';\n  const s = String(v);\n  if (/[\",\\r\\n]/.test(s)) return `\"${s.replace(/\"/g, '\"\"')}\"`;\n  return s;\n}\n\nfunction rowToCsv(row, headers) {\n  return headers.map(h => csvEscape(row[h])).join(',');\n}\n\nfunction toCsv(rows, headers) {\n  const lines = [headers.join(',')];\n  for (const r of rows) lines.push(rowToCsv(r, headers));\n  return lines.join('\\r\\n') + '\\r\\n';\n}\n\nfunction toAmazonRow(p) {\n  const c = p.copy || {};\n  return {\n    feed_product_type: p.category || 'beauty',\n    item_sku: p.sku,\n    brand_name: p.brand,\n    item_name: c.amazonTitle,\n    external_product_id: p.productId,\n    external_product_id_type: p.productIdType,\n    manufacturer: p.manufacturer,\n    part_number: p.partNumber,\n    product_description: c.amazonDescription,\n    standard_price: p.price ? p.price.toFixed(2) : '',\n    quantity: p.quantity || 0,\n    main_image_url: p.mainImageUrl,\n    bullet_point1: c.bullets[0] || '',\n    bullet_point2: c.bullets[1] || '',\n    bullet_point3: c.bullets[2] || '',\n    bullet_point4: c.bullets[3] || '',\n    bullet_point5: c.bullets[4] || '',\n    generic_keywords: c.keywords,\n    item_type: p.specs && p.specs.itemType ? p.specs.itemType : (p.category || 'beauty'),\n    target_audience_keywords: (p.targetAudience || []).join(' '),\n  };\n}\n\nfunction toWalmartRow(p) {\n  const c = p.copy || {};\n  return {\n    'SKU': p.sku,\n    'Product ID Type': p.productIdType,\n    'Product ID': p.productId,\n    'Product Name': c.walmartName,\n    'Brand': p.brand,\n    'Short Description': c.shortDescription,\n    'Long Description': c.longDescription,\n    'Main Image URL': p.mainImageUrl,\n    'Price': p.price ? p.price.toFixed(2) : '',\n    'Shipping Weight (lb)': p.weightLb || '',\n    'Site Description': c.shortDescription,\n    'Key Features 1': c.bullets[0] || '',\n    'Key Features 2': c.bullets[1] || '',\n    'Key Features 3': c.bullets[2] || '',\n    'Key Features 4': c.bullets[3] || '',\n    'Key Features 5': c.bullets[4] || '',\n    'Manufacturer': p.manufacturer,\n    'Color': p.colorLabel,\n    'Size': p.sizeLabel,\n  };\n}\n\nconst all = items.map(i => i.json);\nconst amazonRows  = all.map(toAmazonRow);\nconst walmartRows = all.map(toWalmartRow);\nconst amazonCsv  = toCsv(amazonRows,  AMAZON_HEADERS);\nconst walmartCsv = toCsv(walmartRows, WALMART_HEADERS);\n\nreturn [{\n  json: {\n    summary: {\n      generatedAt: new Date().toISOString(),\n      count: all.length,\n      haramoonCount: all.filter(p => p.copy && p.copy.isHaramoonLine).length,\n      brandSuffixApplied: all.filter(p => p.copy && p.copy.brandSuffixApplied).length,\n      voice: 'Clinical Glow / Quiet Luxury',\n    },\n    amazon: { headers: AMAZON_HEADERS, rows: amazonRows, csv: amazonCsv },\n    walmart: { headers: WALMART_HEADERS, rows: walmartRows, csv: walmartCsv },\n  },\n  binary: {\n    amazon_listings_csv: {\n      data: Buffer.from(amazonCsv, 'utf8').toString('base64'),\n      mimeType: 'text/csv',\n      fileName: `wax-wane-amazon-listings-${Date.now()}.csv`,\n      fileExtension: 'csv',\n    },\n    walmart_listings_csv: {\n      data: Buffer.from(walmartCsv, 'utf8').toString('base64'),\n      mimeType: 'text/csv',\n      fileName: `wax-wane-walmart-listings-${Date.now()}.csv`,\n      fileExtension: 'csv',\n    },\n  },\n}];\n\n\n// TikTok Shop CSV scaffold (activate when TIKTOK_ACCESS_TOKEN is set)\nconst TIKTOK_HEADERS = ['sku','title','description','price','quantity','main_image_url','category','brand'];\nfunction toTikTokRow(p) {\n  const c = p.copy || {};\n  return {\n    sku: p.sku,\n    title: (c.amazonTitle || p.productName || '').substring(0, 255),\n    description: (c.shortDescription || c.amazonDescription || '').substring(0, 2000),\n    price: p.price ? p.price.toFixed(2) : '',\n    quantity: p.quantity || 0,\n    main_image_url: p.mainImageUrl || '',\n    category: p.category || 'Beauty',\n    brand: p.brand || 'Wax | Wane',\n  };\n}\nconst tiktokRows = $input.all().map(i => i.json);\nconst tiktokCsv = toCsv(tiktokRows.map(toTikTokRow), TIKTOK_HEADERS);\nconst base = $input.first().json;\nreturn [{ json: { ...base, tiktokCsv, tiktokRowCount: tiktokRows.length, tiktokNote: 'Scaffold \u2014 upload via TikTok Seller Center until API token active' } }];\n"
+      },
+      "id": "edc0a60a-c5ce-426c-8e99-3404ab176308",
+      "name": "Build Amazon + Walmart CSVs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "2d07f834-97f7-4cc5-8123-8067575ea2b7",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        288
+      ],
+      "continueOnFail": true
+    },
+    {
+      "id": "bulk-filter-lnk",
+      "name": "Filter LNK Vendor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst EXCLUDE_VENDORS = ['lnk.nebraska', 'lnk nebraska'];\nconst out = [];\nfor (const item of $input.all()) {\n  const p = item.json;\n  if (p.skip) { out.push(item); continue; }\n  const v = String(p.brand || p.vendor || '').toLowerCase();\n  if (EXCLUDE_VENDORS.some(x => v.includes(x))) continue;\n  out.push(item);\n}\nreturn out.length ? out : [{ json: { skip: true, message: 'All rows filtered (LNK excluded)' } }];\n"
+      }
+    },
+    {
+      "id": "bulk-sched-shopify",
+      "name": "Weekly Shopify Export",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        400
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bulk-fetch-shopify",
+      "name": "Fetch Shopify Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -680,
+        400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://6f97d0.myshopify.com/admin/api/2025-01/products.json?limit=50&fields=id,title,vendor,product_type,body_html,images,variants",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Shopify-Access-Token",
+              "value": "={{$env.WAX_WANE_SHOPIFY_ADMIN_TOKEN}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bulk-shopify-to-rows",
+      "name": "Shopify To Listing Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const products = $input.first().json.products || [];\nconst EXCLUDE = ['lnk.nebraska','lnk nebraska','lnk'];\nconst rows = [];\nfor (const p of products) {\n  const v = (p.vendor || '').toLowerCase();\n  if (EXCLUDE.some(e => v.includes(e))) continue;\n  const variant = (p.variants || [])[0] || {};\n  rows.push({ json: {\n    sku: variant.sku || `WW-${p.id}`,\n    productName: p.title,\n    brand: p.vendor || 'Wax | Wane',\n    category: p.product_type || 'beauty',\n    price: parseFloat(variant.price) || 0,\n    quantity: variant.inventory_quantity || 0,\n    mainImageUrl: (p.images || [])[0]?.src || '',\n    productId: variant.barcode || '',\n    productIdType: variant.barcode ? 'UPC' : '',\n    bodyHtml: p.body_html || '',\n  }});\n}\nreturn rows.length ? rows : [{ json: { skip: true, message: 'No eligible products' } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Sample Input (Manual)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sample Input (Manual)": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Filter LNK Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Wax | Wane Copy": {
+      "main": [
+        [
+          {
+            "node": "Build Amazon + Walmart CSVs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Amazon + Walmart CSVs": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter LNK Vendor": {
+      "main": [
+        [
+          {
+            "node": "Generate Wax | Wane Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Shopify Export": {
+      "main": [
+        [
+          {
+            "node": "Fetch Shopify Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Shopify Products": {
+      "main": [
+        [
+          {
+            "node": "Shopify To Listing Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify To Listing Rows": {
+      "main": [
+        [
+          {
+            "node": "Generate Wax | Wane Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "staticData": null
+}

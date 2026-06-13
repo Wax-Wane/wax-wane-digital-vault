@@ -1,0 +1,223 @@
+{
+  "id": "gvpg8iO0xTJ4k75e",
+  "name": "Shopify To Walmart Sync",
+  "active": false,
+  "nodes": [
+    {
+      "id": "walmart-cfg",
+      "name": "Set Walmart Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1200,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "w1",
+              "name": "walmartClientId",
+              "value": "={{$env.WALMART_CLIENT_ID}}",
+              "type": "string"
+            },
+            {
+              "id": "w2",
+              "name": "walmartClientSecret",
+              "value": "={{$env.WALMART_CLIENT_SECRET}}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "4d99cb5e-afbe-4834-a625-2fa1f203b783",
+      "name": "Every Monday 6AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Runs every Monday morning to sync new/updated Shopify products to Walmart"
+    },
+    {
+      "parameters": {
+        "url": "https://6f97d0.myshopify.com/admin/api/2024-01/products.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "50"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "updated_at_min",
+              "value": "={{ new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Shopify-Access-Token",
+              "value": "={{$env.WAX_WANE_SHOPIFY_ADMIN_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c95dd223-a554-4ed7-9ad9-c9bc72a8d77a",
+      "name": "Get Shopify Products (Last 7 Days)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transform Shopify products to Walmart feed format\nconst products = $input.first().json.products || [];\n\nif (products.length === 0) {\n  return [{ json: { message: 'No products updated in last 7 days', count: 0 } }];\n}\n\nconst EXCLUDE = ['lnk.nebraska','lnk nebraska','lnk'];\nconst eligible = products.filter(p => !EXCLUDE.some(e => (p.vendor||'').toLowerCase().includes(e)));\nconst walmartItems = eligible.map(product => {\n  const variant = product.variants[0];\n  const image = product.images[0]?.src || '';\n  \n  // Walmart requires GTIN/UPC - use Shopify barcode or SKU\n  const gtin = variant.barcode || variant.sku || '';\n  \n  return {\n    sku: variant.sku || `WW-${product.id}`,\n    productName: product.title,\n    shortDescription: product.body_html?.replace(/<[^>]+>/g, '').substring(0, 500) || '',\n    price: parseFloat(variant.price),\n    currency: 'USD',\n    quantity: variant.inventory_quantity || 0,\n    mainImageUrl: image,\n    productType: product.product_type || 'Health & Beauty',\n    brand: product.vendor || 'Wax and Wane',\n    gtin: gtin,\n    shopify_id: product.id,\n    shopify_handle: product.handle\n  };\n});\n\nreturn walmartItems.map(item => ({ json: item }));"
+      },
+      "id": "457d7b03-1849-419f-bb45-86170e26f64a",
+      "name": "Transform to Walmart Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('Set Walmart Config').first().json;\nconst item = $input.first().json;\nif (item.message) return [{ json: item }];\nif (item.status === 'logged') return [{ json: item }];\n\nconst exclude = ['lnk.nebraska', 'lnk nebraska'];\nconst brand = String(item.brand || '').toLowerCase();\nif (exclude.some(e => brand.includes(e))) {\n  return [{ json: { status: 'skipped', reason: 'LNK vendor excluded', sku: item.sku } }];\n}\n\nif (!cfg.walmartClientId || !cfg.walmartClientSecret) {\n  return [{ json: { status: 'logged', item: item.productName, note: 'Set WALMART_CLIENT_ID/SECRET in vault' } }];\n}\n\n// OAuth token (client credentials)\nconst tokenResp = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://marketplace.walmartapis.com/v3/token',\n  headers: {\n    'WM_SVC.NAME': 'Walmart Marketplace',\n    'WM_QOS.CORRELATION_ID': Date.now().toString(),\n    'Authorization': 'Basic ' + Buffer.from(`${cfg.walmartClientId}:${cfg.walmartClientSecret}`).toString('base64'),\n    'Content-Type': 'application/x-www-form-urlencoded',\n  },\n  body: 'grant_type=client_credentials',\n});\nconst accessToken = tokenResp.access_token;\nif (!accessToken) throw new Error('Walmart token failed');\n\nconst payload = {\n  sku: item.sku,\n  productName: item.productName,\n  price: { currency: 'USD', amount: item.price },\n  publishedStatus: 'PUBLISHED',\n};\nconst resp = await this.helpers.httpRequest({\n  method: 'PUT',\n  url: `https://marketplace.walmartapis.com/v3/items/${encodeURIComponent(item.sku)}`,\n  headers: {\n    'WM_SEC.ACCESS_TOKEN': accessToken,\n    'WM_SVC.NAME': 'Walmart Marketplace',\n    'WM_QOS.CORRELATION_ID': Date.now().toString(),\n    'Content-Type': 'application/json',\n    'Accept': 'application/json',\n  },\n  body: payload,\n  json: true,\n});\nreturn [{ json: { status: 'synced', sku: item.sku, walmart: resp } }];\n"
+      },
+      "id": "043d71e1-38a6-4186-bc35-65b6bfe8f3ca",
+      "name": "Send to Walmart API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "notes": "\u26a0\ufe0f Requires Walmart Seller API credentials. Currently in logging mode. See node for setup instructions."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v19.0/me/feed",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "587b7740d2e62ee7869fbddba352852c"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "5d047a6f-438f-4b2f-a860-27f64c9d34f6",
+      "name": "Notify via Facebook (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "disabled": true,
+      "notes": "Optional: Enable this to post a weekly sync summary to Facebook"
+    }
+  ],
+  "connections": {
+    "Every Monday 6AM": {
+      "main": [
+        [
+          {
+            "node": "Set Walmart Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Shopify Products (Last 7 Days)": {
+      "main": [
+        [
+          {
+            "node": "Transform to Walmart Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Walmart Format": {
+      "main": [
+        [
+          {
+            "node": "Send to Walmart API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Walmart API": {
+      "main": [
+        [
+          {
+            "node": "Notify via Facebook (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Walmart Config": {
+      "main": [
+        [
+          {
+            "node": "Get Shopify Products (Last 7 Days)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "staticData": {
+    "node:Every Monday 6AM": {
+      "recurrenceRules": []
+    }
+  }
+}

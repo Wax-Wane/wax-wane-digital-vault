@@ -3,3 +3,19 @@ gh.tar.gz
 gh.zip
 bin/
 /tmp/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+secrets/
+waxwane_credentials.env
+
+# n8n exports may contain credentials until redacted
+automation/n8n/live/
+automation/n8n/*-backup*.json
+
+# Local runtime data
+data/social/
+storefront-live-backup/
+media/
