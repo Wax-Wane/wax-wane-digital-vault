@@ -1,0 +1,195 @@
+{
+  "name": "Wax | Wane — Bulk Listing Generator (Amazon + Walmart)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "70a8087f-1f9e-409d-b20a-cf5e8e4dbae6",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"items\": [\n    {\n      \"sku\": \"HM-CRM-001\",\n      \"productName\": \"Lunar Bloom Renewal Cream\",\n      \"brand\": \"HARAMOON\",\n      \"brandLine\": \"HARAMOON\",\n      \"category\": \"Beauty\",\n      \"size\": \"50 ml\",\n      \"price\": 68,\n      \"quantity\": 250,\n      \"weightLb\": 0.45,\n      \"productId\": \"012345678905\",\n      \"mainImageUrl\": \"https://cdn.example.com/haramoon/lunar-bloom-50ml-main.jpg\",\n      \"ingredients\": [\n        \"Niacinamide 4%\",\n        \"Squalane\",\n        \"Bakuchiol\",\n        \"Ceramide NP\"\n      ],\n      \"targetAudience\": [\n        \"dry-to-normal skin\",\n        \"evening rituals\"\n      ],\n      \"keywords\": [\n        \"clinical skincare\",\n        \"barrier repair\",\n        \"luxury moisturizer\"\n      ],\n      \"specs\": {\n        \"descriptor\": \"Renewal Cream\",\n        \"benefitOne\": \"Restores barrier suppleness in measured, calibrated layers.\"\n      }\n    },\n    {\n      \"sku\": \"WW-CDL-014\",\n      \"productName\": \"Atelier Soy Candle Cedar Vetiver\",\n      \"brand\": \"Wax | Wane\",\n      \"brandLine\": \"Atelier\",\n      \"category\": \"Home Fragrance\",\n      \"size\": \"8 oz\",\n      \"color\": \"Bone\",\n      \"price\": 42,\n      \"quantity\": 500,\n      \"weightLb\": 0.95,\n      \"productId\": \"098765432104\",\n      \"mainImageUrl\": \"https://cdn.example.com/atelier/cedar-vetiver-8oz.jpg\",\n      \"ingredients\": [\n        \"100% soy wax\",\n        \"cotton wick\",\n        \"phthalate-free fragrance\"\n      ],\n      \"targetAudience\": [\n        \"evening hours\",\n        \"minimal interiors\"\n      ],\n      \"keywords\": [\n        \"soy candle\",\n        \"cedar vetiver\",\n        \"quiet luxury home\"\n      ],\n      \"specs\": {\n        \"descriptor\": \"Hand-Poured Soy Candle\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "3451f73e-1fbc-4b55-9da8-02c76ca4442a",
+      "name": "Sample Input (Manual)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wax-wane/bulk-listings",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "326074b5-d6e2-4449-af36-7a2fd42759d5",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        480
+      ],
+      "webhookId": "8a9809b5-93d3-46f9-83b8-feec5633eb63"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Input — Wax | Wane bulk listing generator\n//\n// Accepts either:\n//   1) Webhook JSON body:  { \"items\": [ {...}, {...} ] }   or a single object\n//   2) Manual run \"Sample Input\" node output (same shape)\n//   3) Raw CSV text in field `csv` — header row required\n//\n// Emits one n8n item per product, with a normalized schema downstream nodes rely on.\n\nfunction parseCsv(text) {\n  const rows = [];\n  let row = [];\n  let cell = '';\n  let inQuotes = false;\n  for (let i = 0; i < text.length; i++) {\n    const c = text[i];\n    if (inQuotes) {\n      if (c === '\"' && text[i + 1] === '\"') { cell += '\"'; i++; }\n      else if (c === '\"') { inQuotes = false; }\n      else { cell += c; }\n    } else {\n      if (c === '\"') inQuotes = true;\n      else if (c === ',') { row.push(cell); cell = ''; }\n      else if (c === '\\n') { row.push(cell); rows.push(row); row = []; cell = ''; }\n      else if (c === '\\r') { /* ignore */ }\n      else cell += c;\n    }\n  }\n  if (cell.length > 0 || row.length > 0) { row.push(cell); rows.push(row); }\n  if (!rows.length) return [];\n  const header = rows.shift().map(h => h.trim());\n  return rows\n    .filter(r => r.some(v => v && v.trim().length))\n    .map(r => Object.fromEntries(header.map((h, i) => [h, (r[i] ?? '').trim()])));\n}\n\nfunction asArray(v) {\n  if (v == null) return [];\n  if (Array.isArray(v)) return v.filter(Boolean).map(s => String(s).trim()).filter(Boolean);\n  if (typeof v === 'string') {\n    return v.split(/\\r?\\n|\\||;/).map(s => s.trim()).filter(Boolean);\n  }\n  return [String(v)];\n}\n\nfunction normalize(raw, idx) {\n  const sku = String(raw.sku || raw.SKU || raw.itemSku || raw.item_sku || `WW-${Date.now()}-${idx + 1}`).trim();\n  const productName = String(raw.productName || raw.product_name || raw.name || raw.title || '').trim();\n  const brand = String(raw.brand || raw.brand_name || 'Wax | Wane').trim();\n  const brandLine = String(raw.brandLine || raw.brand_line || raw.line || '').trim();\n  const category = String(raw.category || raw.product_type || raw.feed_product_type || '').trim();\n  const sizeLabel = String(raw.size || raw.size_label || '').trim();\n  const colorLabel = String(raw.color || '').trim();\n  const price = Number(raw.price ?? raw.standard_price ?? raw.list_price ?? 0) || 0;\n  const quantity = Number(raw.quantity ?? raw.qty ?? 0) || 0;\n  const weightLb = Number(raw.weightLb ?? raw.shipping_weight ?? raw.weight ?? 0) || 0;\n  const productId = String(raw.productId || raw.gtin || raw.upc || raw.ean || raw.external_product_id || '').trim();\n  const productIdType = String(raw.productIdType || raw.external_product_id_type || (productId.length === 12 ? 'UPC' : productId.length === 13 ? 'EAN' : productId ? 'GTIN' : '')).trim();\n  const manufacturer = String(raw.manufacturer || brand).trim();\n  const partNumber = String(raw.partNumber || raw.part_number || sku).trim();\n  const mainImageUrl = String(raw.mainImageUrl || raw.main_image_url || raw.image || '').trim();\n  const features = asArray(raw.features || raw.bullets || raw.bullet_points);\n  const ingredients = asArray(raw.ingredients);\n  const targetAudience = asArray(raw.targetAudience || raw.target_audience_keywords);\n  const keywords = asArray(raw.keywords || raw.generic_keywords);\n  const specs = (raw.specs && typeof raw.specs === 'object') ? raw.specs : {};\n  const shortSummary = String(raw.shortSummary || raw.summary || '').trim();\n  const longDescription = String(raw.longDescription || raw.description || raw.product_description || '').trim();\n\n  return {\n    sku, productName, brand, brandLine, category,\n    sizeLabel, colorLabel, price, quantity, weightLb,\n    productId, productIdType, manufacturer, partNumber, mainImageUrl,\n    features, ingredients, targetAudience, keywords, specs,\n    shortSummary, longDescription,\n  };\n}\n\nconst out = [];\nfor (const item of items) {\n  const body = item.json || {};\n  let rawList = [];\n  if (Array.isArray(body)) rawList = body;\n  else if (Array.isArray(body.items)) rawList = body.items;\n  else if (typeof body.csv === 'string' && body.csv.includes(',')) rawList = parseCsv(body.csv);\n  else if (body.productName || body.product_name || body.sku) rawList = [body];\n  else if (body.body && (Array.isArray(body.body.items) || body.body.productName)) {\n    rawList = Array.isArray(body.body.items) ? body.body.items : [body.body];\n  }\n\n  if (!rawList.length) {\n    throw new Error('No products found in input. Provide { items: [...] } or a CSV string in `csv`.');\n  }\n  rawList.forEach((raw, idx) => out.push({ json: normalize(raw, idx) }));\n}\n\nreturn out;\n"
+      },
+      "id": "3bb22364-bd39-454b-956a-a44cd19f9ad0",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate Wax | Wane Copy — Clinical Glow / Quiet Luxury voice.\n//\n// Deterministic copy generator. No external API call required, so the workflow\n// is reliably runnable. Voice rules and constraints are encoded explicitly:\n//\n//   - Tone: clinical-lab precision, restrained luxury, sensorial-but-measured.\n//   - No exclamation marks, no emojis, no hype words, no slang, no all-caps shouting.\n//   - Title style: noun-led phrasing; descriptor before format; size last.\n//   - Bullets: capitalized noun-phrase head, period at end, ≤ ~250 chars.\n//   - Brand suffix \" | Wax | Wane\" is appended ONLY to titles whose\n//     `brandLine` (or category) matches HARAMOON skincare.\n//\n// Character ceilings here mirror Amazon and Walmart bulk-template hard limits.\n\nconst LIMITS = {\n  amazon:  { title: 200, bullet: 500, description: 2000, keywords: 250 },\n  walmart: { name: 199,  short: 1000, long: 4000, feature: 500 },\n};\n\nconst HYPE = [\n  'amazing','best ever','must-have','life-changing','revolutionary','game-changer',\n  'world-class','incredible','unbelievable','jaw-dropping','perfect','flawless',\n  'cheap','bargain','deal','sale','% off','guaranteed',\n];\nconst EMOJI_RE = /[\\p{Extended_Pictographic}\\u200d]/gu;\n\nfunction dehype(s) {\n  if (!s) return '';\n  let out = String(s).replace(EMOJI_RE, '').replace(/!+/g, '.').replace(/\\s+/g, ' ').trim();\n  for (const h of HYPE) {\n    const re = new RegExp(`\\\\b${h.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\\\b`, 'gi');\n    out = out.replace(re, '');\n  }\n  return out.replace(/\\s+/g, ' ').replace(/\\s+([.,;:])/g, '$1').trim();\n}\n\nfunction clip(s, max) {\n  s = dehype(s);\n  if (!s) return '';\n  if (s.length <= max) return s;\n  const cut = s.slice(0, max);\n  const lastBreak = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf(', '), cut.lastIndexOf(' '));\n  return (lastBreak > max * 0.6 ? cut.slice(0, lastBreak) : cut).replace(/[\\s,;:.\\-]+$/g, '').trim();\n}\n\nfunction titleCase(s) {\n  const small = new Set(['a','an','and','as','at','but','by','for','in','of','on','or','the','to','vs','with']);\n  return String(s || '').split(/\\s+/).map((w, i) => {\n    const lw = w.toLowerCase();\n    if (i > 0 && small.has(lw)) return lw;\n    return lw.charAt(0).toUpperCase() + lw.slice(1);\n  }).join(' ');\n}\n\nfunction isHaramoon(p) {\n  const blob = `${p.brandLine || ''} ${p.brand || ''} ${p.category || ''}`.toLowerCase();\n  return /haramoon/.test(blob);\n}\n\nfunction brandSuffixFor(p) {\n  if (!isHaramoon(p)) return '';\n  return ' | Wax | Wane';\n}\n\nfunction buildTitle(p, hardCap) {\n  const head = titleCase(p.productName || 'Untitled Product');\n  const descriptor = p.specs && p.specs.descriptor ? titleCase(p.specs.descriptor) : '';\n  const formatBits = [];\n  if (descriptor) formatBits.push(descriptor);\n  if (p.colorLabel) formatBits.push(titleCase(p.colorLabel));\n  if (p.sizeLabel) formatBits.push(p.sizeLabel);\n\n  let title = [head, ...formatBits].filter(Boolean).join(' — ');\n  title = dehype(title);\n\n  const suffix = brandSuffixFor(p);\n  if (suffix) {\n    if (title.length + suffix.length > hardCap) {\n      title = clip(title, hardCap - suffix.length);\n    }\n    title = title + suffix;\n  } else {\n    title = clip(title, hardCap);\n  }\n  return title;\n}\n\nfunction defaultFeatures(p) {\n  const ing = (p.ingredients || []).slice(0, 3).join(', ');\n  const aud = (p.targetAudience && p.targetAudience.length) ? p.targetAudience[0] : 'considered routines';\n  return [\n    p.specs && p.specs.benefitOne ? p.specs.benefitOne : 'Calibrated formulation; restrained, measured performance with no excess.',\n    ing ? `Anchored in ${ing}.` : 'Composition selected for clarity, not noise.',\n    `Built for ${aud}.`,\n    'Considered packaging; minimal, recyclable substrate where format permits.',\n    'Quality-controlled in small lots; each unit batch-verified before release.',\n  ];\n}\n\nfunction buildBullets(p, hardCap) {\n  let raw = (p.features && p.features.length ? p.features : defaultFeatures(p)).slice(0, 5);\n  while (raw.length < 5) raw = raw.concat(defaultFeatures(p)).slice(0, 5);\n  return raw.map(b => {\n    let s = dehype(b);\n    s = s.charAt(0).toUpperCase() + s.slice(1);\n    if (!/[.?]$/.test(s)) s += '.';\n    return clip(s, Math.min(hardCap, 250));\n  });\n}\n\nfunction buildShortDescription(p, hardCap) {\n  if (p.shortSummary) return clip(p.shortSummary, hardCap);\n  const aud = p.targetAudience && p.targetAudience[0] ? p.targetAudience[0] : 'considered routines';\n  const ing = (p.ingredients || []).slice(0, 3).join(', ');\n  const s = `${titleCase(p.productName)} — a measured, polished addition to ${aud}.${\n    ing ? ` Composition: ${ing}.` : ''\n  } Performance is restrained, never theatrical.`;\n  return clip(s, hardCap);\n}\n\nfunction buildLongDescription(p, hardCap) {\n  if (p.longDescription) return clip(p.longDescription, hardCap);\n  const ing = (p.ingredients || []).join(', ');\n  const aud = (p.targetAudience || []).join(', ');\n  const paras = [\n    `${titleCase(p.productName)} is built around clarity. Formulation, finish, and feel are tuned for measured performance — the quiet kind of luxury that does not announce itself.`,\n    ing ? `Composition: ${ing}.` : '',\n    aud ? `Designed for: ${aud}.` : '',\n    'Each unit is small-lot, batch-verified, and shipped in considered packaging. Use as part of a deliberate routine; pair with complementary steps from the same line for cohesive results.',\n  ].filter(Boolean);\n  return clip(paras.join('\\n\\n'), hardCap);\n}\n\nfunction buildKeywords(p, hardCap) {\n  const base = new Set((p.keywords || []).map(s => s.toLowerCase()));\n  for (const w of (p.targetAudience || [])) base.add(String(w).toLowerCase());\n  for (const w of (p.ingredients || [])) base.add(String(w).toLowerCase());\n  if (isHaramoon(p)) { base.add('haramoon'); base.add('skincare'); }\n  return clip(Array.from(base).join(' '), hardCap);\n}\n\nconst out = [];\nfor (const item of items) {\n  const p = item.json;\n\n  const amazonTitle = buildTitle(p, LIMITS.amazon.title);\n  const walmartName = buildTitle(p, LIMITS.walmart.name);\n  const bullets    = buildBullets(p, LIMITS.amazon.bullet);\n  const shortDesc  = buildShortDescription(p, LIMITS.walmart.short);\n  const longDesc   = buildLongDescription(p, Math.max(LIMITS.amazon.description, LIMITS.walmart.long));\n  const keywords   = buildKeywords(p, LIMITS.amazon.keywords);\n\n  out.push({\n    json: {\n      ...p,\n      copy: {\n        amazonTitle,\n        walmartName,\n        bullets,\n        shortDescription: shortDesc,\n        longDescription: clip(longDesc, LIMITS.walmart.long),\n        amazonDescription: clip(longDesc, LIMITS.amazon.description),\n        keywords,\n        brandSuffixApplied: Boolean(brandSuffixFor(p)),\n        isHaramoonLine: isHaramoon(p),\n      },\n      voice: {\n        style: 'Clinical Glow / Quiet Luxury',\n        rules: {\n          noExclamations: true,\n          noEmojis: true,\n          noHype: true,\n          brandSuffix: 'Appended only to HARAMOON skincare-line titles',\n        },\n        limits: LIMITS,\n      },\n    },\n  });\n}\nreturn out;\n"
+      },
+      "id": "b29012bd-5ea4-4ec4-8433-a22a0e691205",
+      "name": "Generate Wax | Wane Copy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build CSVs — assemble Amazon and Walmart bulk-listing CSVs from generated copy.\n//\n// Header sets target the common Amazon Beauty / Health & Personal Care flat-file\n// schema and the Walmart Marketplace Setup-by-Match item-spec. Both are documented\n// at vendor portals; replace headers if your category template differs.\n//\n// CSV escaping follows RFC 4180: wrap in quotes when value contains comma, quote,\n// or newline; escape internal quotes by doubling.\n\nconst AMAZON_HEADERS = [\n  'feed_product_type',\n  'item_sku',\n  'brand_name',\n  'item_name',\n  'external_product_id',\n  'external_product_id_type',\n  'manufacturer',\n  'part_number',\n  'product_description',\n  'standard_price',\n  'quantity',\n  'main_image_url',\n  'bullet_point1',\n  'bullet_point2',\n  'bullet_point3',\n  'bullet_point4',\n  'bullet_point5',\n  'generic_keywords',\n  'item_type',\n  'target_audience_keywords',\n];\n\nconst WALMART_HEADERS = [\n  'SKU',\n  'Product ID Type',\n  'Product ID',\n  'Product Name',\n  'Brand',\n  'Short Description',\n  'Long Description',\n  'Main Image URL',\n  'Price',\n  'Shipping Weight (lb)',\n  'Site Description',\n  'Key Features 1',\n  'Key Features 2',\n  'Key Features 3',\n  'Key Features 4',\n  'Key Features 5',\n  'Manufacturer',\n  'Color',\n  'Size',\n];\n\nfunction csvEscape(v) {\n  if (v == null) return '';\n  const s = String(v);\n  if (/[\",\\r\\n]/.test(s)) return `\"${s.replace(/\"/g, '\"\"')}\"`;\n  return s;\n}\n\nfunction rowToCsv(row, headers) {\n  return headers.map(h => csvEscape(row[h])).join(',');\n}\n\nfunction toCsv(rows, headers) {\n  const lines = [headers.join(',')];\n  for (const r of rows) lines.push(rowToCsv(r, headers));\n  return lines.join('\\r\\n') + '\\r\\n';\n}\n\nfunction toAmazonRow(p) {\n  const c = p.copy || {};\n  return {\n    feed_product_type: p.category || 'beauty',\n    item_sku: p.sku,\n    brand_name: p.brand,\n    item_name: c.amazonTitle,\n    external_product_id: p.productId,\n    external_product_id_type: p.productIdType,\n    manufacturer: p.manufacturer,\n    part_number: p.partNumber,\n    product_description: c.amazonDescription,\n    standard_price: p.price ? p.price.toFixed(2) : '',\n    quantity: p.quantity || 0,\n    main_image_url: p.mainImageUrl,\n    bullet_point1: c.bullets[0] || '',\n    bullet_point2: c.bullets[1] || '',\n    bullet_point3: c.bullets[2] || '',\n    bullet_point4: c.bullets[3] || '',\n    bullet_point5: c.bullets[4] || '',\n    generic_keywords: c.keywords,\n    item_type: p.specs && p.specs.itemType ? p.specs.itemType : (p.category || 'beauty'),\n    target_audience_keywords: (p.targetAudience || []).join(' '),\n  };\n}\n\nfunction toWalmartRow(p) {\n  const c = p.copy || {};\n  return {\n    'SKU': p.sku,\n    'Product ID Type': p.productIdType,\n    'Product ID': p.productId,\n    'Product Name': c.walmartName,\n    'Brand': p.brand,\n    'Short Description': c.shortDescription,\n    'Long Description': c.longDescription,\n    'Main Image URL': p.mainImageUrl,\n    'Price': p.price ? p.price.toFixed(2) : '',\n    'Shipping Weight (lb)': p.weightLb || '',\n    'Site Description': c.shortDescription,\n    'Key Features 1': c.bullets[0] || '',\n    'Key Features 2': c.bullets[1] || '',\n    'Key Features 3': c.bullets[2] || '',\n    'Key Features 4': c.bullets[3] || '',\n    'Key Features 5': c.bullets[4] || '',\n    'Manufacturer': p.manufacturer,\n    'Color': p.colorLabel,\n    'Size': p.sizeLabel,\n  };\n}\n\nconst all = items.map(i => i.json);\nconst amazonRows  = all.map(toAmazonRow);\nconst walmartRows = all.map(toWalmartRow);\n\nconst amazonCsv  = toCsv(amazonRows,  AMAZON_HEADERS);\nconst walmartCsv = toCsv(walmartRows, WALMART_HEADERS);\n\nconst summary = {\n  generatedAt: new Date().toISOString(),\n  count: all.length,\n  haramoonCount: all.filter(p => p.copy && p.copy.isHaramoonLine).length,\n  brandSuffixApplied: all.filter(p => p.copy && p.copy.brandSuffixApplied).length,\n  voice: 'Clinical Glow / Quiet Luxury',\n};\n\nreturn [{\n  json: {\n    summary,\n    amazon: { headers: AMAZON_HEADERS, rows: amazonRows, csv: amazonCsv },\n    walmart: { headers: WALMART_HEADERS, rows: walmartRows, csv: walmartCsv },\n  },\n  binary: {\n    amazon_listings_csv: {\n      data: Buffer.from(amazonCsv, 'utf8').toString('base64'),\n      mimeType: 'text/csv',\n      fileName: `wax-wane-amazon-listings-${Date.now()}.csv`,\n      fileExtension: 'csv',\n    },\n    walmart_listings_csv: {\n      data: Buffer.from(walmartCsv, 'utf8').toString('base64'),\n      mimeType: 'text/csv',\n      fileName: `wax-wane-walmart-listings-${Date.now()}.csv`,\n      fileExtension: 'csv',\n    },\n  },\n}];\n"
+      },
+      "id": "0383196c-1a16-4e19-a107-e5c07a5e0918",
+      "name": "Build Amazon + Walmart CSVs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "f93b8e9f-f29d-4064-8c58-51e4740a655c",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        480
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Sample Input (Manual)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sample Input (Manual)": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Generate Wax | Wane Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Wax | Wane Copy": {
+      "main": [
+        [
+          {
+            "node": "Build Amazon + Walmart CSVs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Amazon + Walmart CSVs": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "meta": {
+    "description": "Bulk listing generator for Wax | Wane. Accepts JSON or CSV input, produces Amazon and Walmart bulk-template CSVs with Clinical Glow / Quiet Luxury copy. Brand suffix \" | Wax | Wane\" is appended only to titles in the HARAMOON skincare line."
+  },
+  "tags": [
+    {
+      "name": "wax-wane"
+    },
+    {
+      "name": "listings"
+    },
+    {
+      "name": "amazon"
+    },
+    {
+      "name": "walmart"
+    }
+  ]
+}
