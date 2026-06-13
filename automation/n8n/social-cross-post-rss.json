@@ -1,0 +1,611 @@
+{
+  "id": "Qm8xCr0ssP0st26W",
+  "name": "Wax | Wane \u2014 Social Cross-Post (Published RSS)",
+  "active": true,
+  "nodes": [
+    {
+      "id": "soc-sched",
+      "name": "Every 4 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1200,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */4 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "soc-cfg",
+      "name": "Set Social Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -980,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "fbToken",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "fbPageId",
+              "value": "203171376205580",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "igUserId",
+              "value": "17841458399612807",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "igToken",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "pinToken",
+              "value": "={{$env.PINTEREST_ACCESS_TOKEN}}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "pinBoardId",
+              "value": "1095148903077605529",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "shopifyToken",
+              "value": "={{$env.WAX_WANE_SHOPIFY_ADMIN_TOKEN}}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "soc-rss",
+      "name": "Fetch Wax Wane Blog RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -760,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://waxandwane.store/blogs/wax-wane-blog.atom",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "soc-find",
+      "name": "Find New RSS Article",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -540,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst atom = $input.first().json.data || '';\nconst staticData = $getWorkflowStaticData('global');\nstaticData.postedLinks = staticData.postedLinks || {};\nconst posted = staticData.postedLinks;\n\nfunction parseAtom(xml) {\n  const entries = [];\n  const blocks = xml.split('<entry>').slice(1);\n  for (const block of blocks) {\n    const link = (block.match(/<link[^>]+href=\"([^\"]+)\"/) || [])[1];\n    const title = (block.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/) || [])[1]?.replace(/<!\\[CDATA\\[|\\]\\]>/g, '').trim();\n    const summary = (block.match(/<summary[^>]*>([\\s\\S]*?)<\\/summary>/) || [])[1]?.replace(/<!\\[CDATA\\[|\\]\\]>/g, '').replace(/<[^>]+>/g, ' ').trim() || '';\n    const published = (block.match(/<published>([\\s\\S]*?)<\\/published>/) || [])[1]?.trim() || '';\n    if (link && title) entries.push({ link, title, summary, published });\n  }\n  return entries;\n}\n\nconst entries = parseAtom(atom);\nfor (const e of entries) {\n  if (posted[e.link]) continue;\n  const handle = e.link.split('/').filter(Boolean).pop();\n  return [{ json: { ...e, handle, blog_id: '119979376952', blog_name: 'Wax | Wane Blog' } }];\n}\nreturn [{ json: { skip: true, message: 'No new published articles in RSS' } }];\n"
+      }
+    },
+    {
+      "id": "soc-if-new",
+      "name": "Has New Article?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "soc-verify",
+      "name": "Verify Source-Blog Tag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst cfg = $('Set Social Config').first().json;\nconst art = $('Find New RSS Article').first().json;\nif (art.skip) return [{ json: { skip: true } }];\nconst handle = art.handle;\nconst url = `https://6f97d0.myshopify.com/admin/api/2025-01/blogs/119979376952/articles.json?handle=${handle}&fields=id,handle,tags,title,image`;\nconst resp = await this.helpers.httpRequest({\n  method: 'GET', url,\n  headers: { 'X-Shopify-Access-Token': cfg.shopifyToken },\n  json: true,\n});\nconst article = (resp.articles || [])[0];\nif (!article) throw new Error('Shopify article not found for handle: ' + handle);\nconst tags = (article.tags || '').toLowerCase();\nif (!tags.includes('source-blog')) {\n  return [{ json: { skip: true, message: 'Not a with-source article (missing source-blog tag)', handle } }];\n}\nreturn [{ json: { ...art, articleId: article.id, shopifyTags: article.tags, image_url: article.image?.src || null } }];\n"
+      }
+    },
+    {
+      "id": "soc-if-source",
+      "name": "Is With-Source?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "soc-og",
+      "name": "Fetch Featured Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst art = $input.first().json;\nif (art.skip) return [{ json: art }];\nif (art.image_url) return [{ json: art }];\ntry {\n  const html = await this.helpers.httpRequest({ method: 'GET', url: art.link, returnFullResponse: false });\n  const m = String(html).match(/<meta\\s+property=[\"']og:image[\"']\\s+content=[\"']([^\"']+)[\"']/i);\n  if (m) art.image_url = m[1];\n} catch (e) { /* non-fatal */ }\nreturn [{ json: art }];\n"
+      }
+    },
+    {
+      "id": "soc-cap",
+      "name": "Build Platform Captions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst art = $input.first().json;\nif (art.skip) return [{ json: art }];\nconst summary = (art.summary || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst pinterestHashtags = '#WellnessLifestyle #SelfCare #BeautyRitual #WaxAndWane #SlowLiving';\nconst fbCaption = `${art.title}\\n\\n${summary.substring(0, 200)}...\\n\\nRead more: ${art.link}`;\nconst igCaption = `${art.title}\\n\\n${summary.substring(0, 100)}...\\n\\nLink in bio! \ud83d\udd17`;\nconst pinDescription = (`${art.title}\\n\\n${summary.substring(0, 200)}\\n\\n${pinterestHashtags}`).substring(0, 500);\nconst linkedinCaption = `${art.title}\\n\\nWax | Wane is a modern wellness brand at the intersection of crystal science, clean Korean beauty, and EMF protection.\\n\\n${art.link}\\n\\n#WellnessBrand #Ecommerce #WaxAndWane`;\nreturn [{ json: { ...art, fbCaption, igCaption, pinDescription, linkedinCaption, pinterestHashtags } }];\n"
+      }
+    },
+    {
+      "id": "soc-fb",
+      "name": "Post to Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        -120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v25.0/203171376205580/photos",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.fbCaption }}"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.image_url || '' }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "soc-ig1",
+      "name": "IG Create Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v25.0/17841458399612807/media",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $('Build Platform Captions').item.json.image_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Build Platform Captions').item.json.igCaption }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "disabled": false
+    },
+    {
+      "id": "soc-ig2",
+      "name": "IG Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v25.0/17841458399612807/media_publish",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{$env.META_SYSTEM_USER_TOKEN}}"
+            },
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "soc-pin",
+      "name": "Post to Pinterest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pinterest.com/v5/pins",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{$env.PINTEREST_ACCESS_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": {{ JSON.stringify($json.title).slice(0,100) }},\n  \"description\": {{ JSON.stringify($json.pinDescription) }},\n  \"link\": {{ JSON.stringify($json.link) }},\n  \"board_id\": {{ JSON.stringify($(\"Set Social Config\").item.json.pinBoardId) }},\n  \"media_source\": { \"source_type\": \"image_url\", \"url\": {{ JSON.stringify($json.image_url || \"\") }} }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "soc-done",
+      "name": "Mark Cross-Posted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst art = $('Build Platform Captions').first().json;\nif (art.skip) return [{ json: art }];\nconst staticData = $getWorkflowStaticData('global');\nstaticData.postedLinks = staticData.postedLinks || {};\nstaticData.postedLinks[art.link] = { at: new Date().toISOString(), title: art.title };\nreturn [{ json: { status: 'cross_posted', title: art.title, url: art.link, finishedAt: new Date().toISOString() } }];\n"
+      }
+    },
+    {
+      "id": "soc-stop",
+      "name": "No New Posts \u2014 Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        160
+      ]
+    },
+    {
+      "id": "soc-skip",
+      "name": "Not Source Blog \u2014 Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        120,
+        160
+      ]
+    }
+  ],
+  "connections": {
+    "Every 4 Hours": {
+      "main": [
+        [
+          {
+            "node": "Set Social Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Social Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Wax Wane Blog RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Wax Wane Blog RSS": {
+      "main": [
+        [
+          {
+            "node": "Find New RSS Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find New RSS Article": {
+      "main": [
+        [
+          {
+            "node": "Has New Article?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has New Article?": {
+      "main": [
+        [
+          {
+            "node": "Verify Source-Blog Tag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No New Posts \u2014 Stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Source-Blog Tag": {
+      "main": [
+        [
+          {
+            "node": "Is With-Source?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is With-Source?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Featured Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not Source Blog \u2014 Stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Featured Image": {
+      "main": [
+        [
+          {
+            "node": "Build Platform Captions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Platform Captions": {
+      "main": [
+        [
+          {
+            "node": "Post to Facebook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IG Create Container",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to Pinterest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG Create Container": {
+      "main": [
+        [
+          {
+            "node": "IG Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG Publish": {
+      "main": [
+        [
+          {
+            "node": "Mark Cross-Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Facebook": {
+      "main": [
+        [
+          {
+            "node": "Mark Cross-Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Pinterest": {
+      "main": [
+        [
+          {
+            "node": "Mark Cross-Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": {
+    "postedLinks": {
+      "https://waxandwane.store/blogs/wax-wane-blog/moonstone": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/%E2%9C%A8-haramoon-the-complete-skin-barrier-ritual": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/what-are-faraday-bags-and-how-do-they-work": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/caffeine-and-adenosine-shampoo-reshapes-scalp-microbiome-reduces-hair-loss": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/formaldehyde-in-your-faves-the-eu-says-no-way": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/we-shouldnt-have-to-be-chemists-to-figure-out-what-products-are-making-us-sick": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/wax-wane-blog/what-is-your-frequency-no-really-science-has-an-answer": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/why-korean-skincare/toners-are-not-what-they-used-to-be_-the-new-generation-of-skin-balancers": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/why-korean-skincare/hydration-moisture_-why-your-skin-needs-an-ampoule": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/why-korean-skincare/ingredient-spotlight-sea-water": {
+        "seeded": true
+      },
+      "https://waxandwane.store/blogs/why-korean-skincare/allantoin_-the-quiet-healer-your-skin-craves": {
+        "seeded": true
+      }
+    }
+  }
+}

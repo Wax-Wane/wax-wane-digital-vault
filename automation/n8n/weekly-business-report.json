@@ -1,0 +1,254 @@
+{
+  "id": "t52xq1JDUuafqLmV",
+  "name": "Weekly Business Report",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "3f0fbd92-b7df-4632-a012-23a91bc1bec4",
+      "name": "Every Monday 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://6f97d0.myshopify.com/admin/api/2024-01/articles.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "50"
+            },
+            {
+              "name": "created_at_min",
+              "value": "={{ new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Shopify-Access-Token",
+              "value": "={{$env.WAX_WANE_SHOPIFY_ADMIN_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5a935950-3523-4b14-b7c6-eecb32faa931",
+      "name": "Get This Week's Blog Articles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://6f97d0.myshopify.com/admin/api/2024-01/orders.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "any"
+            },
+            {
+              "name": "created_at_min",
+              "value": "={{ new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}"
+            },
+            {
+              "name": "limit",
+              "value": "250"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Shopify-Access-Token",
+              "value": "={{$env.WAX_WANE_SHOPIFY_ADMIN_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e0598def-0365-4961-bb6a-2dcbfdee4c31",
+      "name": "Get This Week's Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://docs.google.com/spreadsheets/d/19kcTZT3h3u1RLwNUT5T-3H3-QsFhL2eeaAdWpXka8Eo/export?format=csv&gid=0",
+        "options": {}
+      },
+      "id": "51b047f3-4577-4769-81d4-6176b4623498",
+      "name": "Get Blog Ideas Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compile all data into a weekly report\nconst articles = $('Get This Week\\'s Blog Articles').first().json.articles || [];\nconst orders = $('Get This Week\\'s Orders').first().json.orders || [];\nconst sheetCsv = $('Get Blog Ideas Sheet').first().json.data || '';\n\n// Count pending blog ideas in sheet\nconst sheetLines = sheetCsv.split('\\n').filter(l => l.trim()).slice(1);\nconst DONE = ['drafted','published','done'];\nlet pendingIdeas = 0;\nfor (const line of sheetLines) {\n  const cols = line.split(',');\n  const status = (cols[4] || '').toLowerCase().trim();\n  if (!DONE.includes(status) && cols[0]?.trim()) pendingIdeas++;\n}\n\n// Calculate order metrics\nconst totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price || 0), 0);\nconst publishedArticles = articles.filter(a => a.published_at);\nconst draftArticles = articles.filter(a => !a.published_at);\n\n// Build the report\nconst weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);\nconst weekEnd = new Date();\nconst dateRange = `${weekStart.toLocaleDateString('en-US', {month:'short',day:'numeric'})} - ${weekEnd.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'})}`;\n\nconst report = `\n\ud83c\udf19 WAX & WANE WEEKLY REPORT\n${dateRange}\n${'='.repeat(40)}\n\n\ud83d\udcdd CONTENT\n\u2022 Blog drafts created this week: ${articles.length}\n\u2022 Published: ${publishedArticles.length}\n\u2022 Pending review (drafts): ${draftArticles.length}\n\u2022 Blog ideas still in queue: ${pendingIdeas}\n\n${draftArticles.length > 0 ? '\ud83d\udccb DRAFTS READY TO PUBLISH:\\n' + draftArticles.map(a => `  \u2022 ${a.title}`).join('\\n') + '\\n' : ''}\n\ud83d\udcb0 SALES\n\u2022 Orders this week: ${orders.length}\n\u2022 Revenue: $${totalRevenue.toFixed(2)}\n\n\ud83d\udcc5 UPCOMING\n\u2022 Next blog run: This Sunday & Thursday at 2:00 PM\n\u2022 Next catalog sync: Next Monday at 6:00 AM\n\n${'='.repeat(40)}\nView your store: https://waxandwane.store\nShopify admin: https://admin.shopify.com/store/6f97d0\n`;\n\nreturn [{ json: { report, articles_count: articles.length, orders_count: orders.length, revenue: totalRevenue.toFixed(2), pending_ideas: pendingIdeas } }];"
+      },
+      "id": "6536f985-12d5-4175-935c-2eba5394a936",
+      "name": "Compile Weekly Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v19.0/me/feed",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "587b7740d2e62ee7869fbddba352852c"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "e21ea068-500f-4712-b56f-ca7cd4f0a26b",
+      "name": "Send Report to Facebook (Private)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        464,
+        112
+      ],
+      "disabled": true,
+      "notes": "Optional: Enable to post report to Facebook. Keep disabled unless you want it public."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log the report to n8n execution log\nconst report = $input.first().json.report;\nconsole.log(report);\nreturn [{ json: { success: true, report_sent: true, timestamp: new Date().toISOString() } }];"
+      },
+      "id": "8beff923-be59-4c15-95e2-ba037a226535",
+      "name": "Log Report to n8n",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ],
+      "notes": "Report is logged to n8n execution history. Open this execution to read it."
+    }
+  ],
+  "connections": {
+    "Every Monday 8AM": {
+      "main": [
+        [
+          {
+            "node": "Get This Week's Blog Articles",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get This Week's Orders",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Blog Ideas Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get This Week's Blog Articles": {
+      "main": [
+        [
+          {
+            "node": "Compile Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get This Week's Orders": {
+      "main": [
+        [
+          {
+            "node": "Compile Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Blog Ideas Sheet": {
+      "main": [
+        [
+          {
+            "node": "Compile Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Weekly Report": {
+      "main": [
+        [
+          {
+            "node": "Send Report to Facebook (Private)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Report to n8n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "staticData": null
+}

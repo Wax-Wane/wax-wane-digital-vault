@@ -1,0 +1,50 @@
+[
+  {
+    "id": "gvpg8iO0xTJ4k75e",
+    "name": "Shopify To Walmart Sync",
+    "active": false,
+    "export": "automation/n8n/shopify-to-walmart-sync.json"
+  },
+  {
+    "id": "VTnHjhKe4FM13oZR",
+    "name": "Wax | Wane \u2014 Bulk Listing Generator (Amazon + Walmart)",
+    "active": false,
+    "export": "automation/n8n/bulk-listing-generator.json"
+  },
+  {
+    "id": "Kn3shyLBtFxmKZMH",
+    "name": "with Source Blog \u2014 Perplexity Engine (Fixed)",
+    "active": true,
+    "export": "automation/n8n/with-source-blog-perplexity.json"
+  },
+  {
+    "id": "dwA0nkpLsnpSN30p",
+    "name": "MANUS 6-9 Wax | Wane \u2014 Blog Auto-Post (FIXED v2)",
+    "active": true,
+    "export": "automation/n8n/MANUS-blog-autopost-v2.json"
+  },
+  {
+    "id": "Qm8xCr0ssP0st26W",
+    "name": "Wax | Wane \u2014 Social Cross-Post (Published RSS)",
+    "active": true,
+    "export": "automation/n8n/social-cross-post-rss.json"
+  },
+  {
+    "id": "Qm8xS1sterP0st26W",
+    "name": "Wax | Wane \u2014 Sister Post (Mon/Wed Product Spotlight)",
+    "active": true,
+    "export": "automation/n8n/sister-post-mon-wed.json"
+  },
+  {
+    "id": "WxWnProductPipe01",
+    "name": "Wax | Wane \u2014 Product Publish Pipeline",
+    "active": false,
+    "export": "automation/n8n/wax-wane-product-publish-pipeline.json"
+  },
+  {
+    "id": "WxWnHaramoonIG01",
+    "name": "Wax | Wane \u2014 HARAMOON IG Poster",
+    "active": false,
+    "export": "automation/n8n/wax-wane-haramoon-ig-poster.json"
+  }
+]
